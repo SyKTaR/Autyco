@@ -1,0 +1,666 @@
+import { PROBLEM_CATALOG, VEHICLE_CATALOG } from './catalog'
+import {
+  BASE_GARAGE_CAPACITY,
+  PROPERTY_CHARGE_CYCLE_MS,
+  PROPERTY_MARKET,
+} from './properties'
+import type {
+  GameNotification,
+  GameState,
+  MarketListing,
+  OwnedVehicle,
+  OwnedProperty,
+  RiskLevel,
+  VehicleProblem,
+} from '../types/game'
+
+export type RandomSource = () => number
+
+const LISTING_TARGET = 10
+const STARTING_CASH = 20_000
+
+const roundTo = (value: number, step: number) => Math.round(value / step) * step
+const boundedRandom = (random: RandomSource) => Math.max(0, Math.min(0.999_999, random()))
+const randomBetween = (min: number, max: number, random: RandomSource) =>
+  min + boundedRandom(random) * (max - min)
+const randomInteger = (min: number, max: number, random: RandomSource) =>
+  Math.floor(randomBetween(min, max + 1, random))
+
+const makeId = (prefix: string, now: number, random: RandomSource) =>
+  `${prefix}-${now.toString(36)}-${Math.floor(boundedRandom(random) * 1_000_000).toString(36)}`
+
+export const getDayKey = (timestamp: number) => {
+  const date = new Date(timestamp)
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+}
+
+const getRisk = (random: RandomSource): RiskLevel => {
+  const roll = boundedRandom(random)
+  if (roll < 0.36) return 'low'
+  if (roll < 0.76) return 'medium'
+  return 'high'
+}
+
+const riskPriceFactor: Record<RiskLevel, [number, number]> = {
+  low: [0.82, 0.9],
+  medium: [0.74, 0.84],
+  high: [0.64, 0.77],
+}
+
+const riskCondition: Record<RiskLevel, string> = {
+  low: 'Semble soignée',
+  medium: 'État correct',
+  high: 'À inspecter',
+}
+
+const createListing = (
+  templateIndex: number,
+  now: number,
+  random: RandomSource,
+): MarketListing => {
+  const template = VEHICLE_CATALOG[templateIndex]
+  const risk = getRisk(random)
+  const year = randomInteger(template.yearMin, template.yearMax, random)
+  const ageAdjustment = 1 + (year - (template.yearMin + template.yearMax) / 2) * 0.035
+  const marketValue = roundTo(
+    template.marketValue * ageAdjustment * randomBetween(0.97, 1.04, random),
+    100,
+  )
+  const [minFactor, maxFactor] = riskPriceFactor[risk]
+
+  return {
+    id: makeId('listing', now + templateIndex, random),
+    templateId: template.id,
+    maker: template.maker,
+    model: template.model,
+    segment: template.segment,
+    year,
+    mileage: roundTo(randomInteger(template.mileageMin, template.mileageMax, random), 500),
+    askingPrice: roundTo(marketValue * randomBetween(minFactor, maxFactor, random), 100),
+    marketValue,
+    risk,
+    conditionHint: riskCondition[risk],
+    expiresAt: now + randomInteger(85, 170, random) * 1_000,
+  }
+}
+
+export const generateListings = (
+  count: number,
+  now: number,
+  random: RandomSource = Math.random,
+  excludedTemplateIds: string[] = [],
+) => {
+  const availableIndexes = VEHICLE_CATALOG.map((_, index) => index).filter(
+    (index) => !excludedTemplateIds.includes(VEHICLE_CATALOG[index].id),
+  )
+  const listings: MarketListing[] = []
+
+  while (listings.length < count && availableIndexes.length > 0) {
+    const availableIndex = Math.floor(boundedRandom(random) * availableIndexes.length)
+    const [templateIndex] = availableIndexes.splice(availableIndex, 1)
+    listings.push(createListing(templateIndex, now + listings.length, random))
+  }
+
+  return listings
+}
+
+const withNotification = (
+  state: GameState,
+  message: string,
+  tone: GameNotification['tone'],
+  random: RandomSource = Math.random,
+): GameState => ({
+  ...state,
+  notifications: [
+    ...state.notifications.slice(-2),
+    { id: makeId('note', Date.now(), random), message, tone },
+  ],
+})
+
+export const createInitialGame = (
+  now = Date.now(),
+  random: RandomSource = Math.random,
+): GameState => ({
+  version: 2,
+  cash: STARTING_CASH,
+  profitToday: 0,
+  profitDayKey: getDayKey(now),
+  vehicles: [],
+  properties: [],
+  listings: generateListings(LISTING_TARGET, now, random),
+  notifications: [],
+})
+
+export const getGarageCapacity = (state: GameState) =>
+  BASE_GARAGE_CAPACITY +
+  state.properties
+    .filter((property) => property.status === 'operational')
+    .reduce((total, property) => total + property.capacity, 0)
+
+export const getPropertyCycleCost = (property: OwnedProperty) =>
+  property.rentPerCycle + property.chargesPerCycle
+
+export const getRecurringPropertyCosts = (state: GameState) =>
+  state.properties.reduce((total, property) => total + getPropertyCycleCost(property), 0)
+
+export const getRepairCost = (vehicle: OwnedVehicle) =>
+  vehicle.problems.filter((problem) => !problem.repaired).reduce((sum, problem) => sum + problem.cost, 0)
+
+export const getRepairDuration = (vehicle: OwnedVehicle) => {
+  const seconds = vehicle.problems
+    .filter((problem) => !problem.repaired)
+    .reduce((sum, problem) => sum + problem.durationSeconds, 0)
+  return Math.min(18, Math.max(6, Math.round(seconds * 0.72)))
+}
+
+export const getVehicleResaleValue = (vehicle: OwnedVehicle) => {
+  const unresolvedImpact = vehicle.problems
+    .filter((problem) => !problem.repaired)
+    .reduce((sum, problem) => sum + problem.resaleImpact, 0)
+  return Math.max(roundTo(vehicle.marketValue - unresolvedImpact, 100), 1_000)
+}
+
+export const getVehicleInvestment = (vehicle: OwnedVehicle) =>
+  vehicle.purchasePrice + vehicle.repairCosts
+
+export const getSaleChance = (vehicle: OwnedVehicle, price: number) => {
+  const fairValue = getVehicleResaleValue(vehicle)
+  const ratio = price / fairValue
+  if (ratio <= 0.94) return 0.88
+  if (ratio <= 0.99) return 0.74
+  if (ratio <= 1.03) return 0.58
+  if (ratio <= 1.08) return 0.39
+  return 0.24
+}
+
+const selectProblems = (risk: RiskLevel, random: RandomSource): VehicleProblem[] => {
+  const countByRisk: Record<RiskLevel, [number, number]> = {
+    low: [1, 1],
+    medium: [1, 2],
+    high: [2, 3],
+  }
+  const [minimum, maximum] = countByRisk[risk]
+  const count = randomInteger(minimum, maximum, random)
+  const available = [...PROBLEM_CATALOG]
+  const selected: VehicleProblem[] = []
+
+  while (selected.length < count) {
+    const index = Math.floor(boundedRandom(random) * available.length)
+    const [problem] = available.splice(index, 1)
+    selected.push({ ...problem, repaired: false })
+  }
+
+  return selected
+}
+
+const topUpListings = (state: GameState, now: number, random: RandomSource) => {
+  if (state.listings.length >= LISTING_TARGET) return state
+  const additions = generateListings(
+    LISTING_TARGET - state.listings.length,
+    now,
+    random,
+    state.listings.map((listing) => listing.templateId),
+  )
+  return { ...state, listings: [...state.listings, ...additions] }
+}
+
+export const buyListing = (
+  state: GameState,
+  listingId: string,
+  now: number,
+  random: RandomSource = Math.random,
+): GameState => {
+  const listing = state.listings.find((item) => item.id === listingId)
+  if (!listing) return state
+  if (state.vehicles.length >= getGarageCapacity(state)) {
+    return withNotification(state, 'Le garage est complet. Libère une place avant d’acheter.', 'warning', random)
+  }
+  if (state.cash < listing.askingPrice) {
+    return withNotification(state, 'Trésorerie insuffisante pour cet achat.', 'warning', random)
+  }
+
+  const vehicle: OwnedVehicle = {
+    id: makeId('vehicle', now, random),
+    listingId: listing.id,
+    templateId: listing.templateId,
+    maker: listing.maker,
+    model: listing.model,
+    segment: listing.segment,
+    year: listing.year,
+    mileage: listing.mileage,
+    purchasePrice: listing.askingPrice,
+    marketValue: listing.marketValue,
+    risk: listing.risk,
+    status: 'needs-diagnosis',
+    problems: [],
+    repairCosts: 0,
+    repairsSkipped: false,
+    kept: false,
+    acquiredAt: now,
+  }
+
+  const nextState: GameState = {
+    ...state,
+    cash: state.cash - listing.askingPrice,
+    vehicles: [...state.vehicles, vehicle],
+    listings: state.listings.filter((item) => item.id !== listingId),
+  }
+
+  return withNotification(
+    topUpListings(nextState, now, random),
+    `${listing.model} achetée. Direction le diagnostic.`,
+    'neutral',
+    random,
+  )
+}
+
+export const ignoreListing = (
+  state: GameState,
+  listingId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  if (!state.listings.some((listing) => listing.id === listingId)) return state
+  return topUpListings(
+    { ...state, listings: state.listings.filter((listing) => listing.id !== listingId) },
+    now,
+    random,
+  )
+}
+
+export const diagnoseVehicle = (
+  state: GameState,
+  vehicleId: string,
+  random: RandomSource = Math.random,
+) => {
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (!vehicle || vehicle.status !== 'needs-diagnosis') return state
+  const problems = selectProblems(vehicle.risk, random)
+  const repairCost = problems.reduce((sum, problem) => sum + problem.cost, 0)
+  const nextState = {
+    ...state,
+    vehicles: state.vehicles.map((item) =>
+      item.id === vehicleId ? { ...item, problems, status: 'needs-decision' as const } : item,
+    ),
+  }
+  return withNotification(
+    nextState,
+    `Diagnostic terminé : ${problems.length} poste${problems.length > 1 ? 's' : ''}, ${repairCost.toLocaleString('fr-FR')} € à prévoir.`,
+    problems.length > 1 ? 'warning' : 'neutral',
+    random,
+  )
+}
+
+export const startRepair = (
+  state: GameState,
+  vehicleId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (!vehicle || vehicle.status !== 'needs-decision') return state
+  const cost = getRepairCost(vehicle)
+  if (state.cash < cost) {
+    return withNotification(state, 'Trésorerie insuffisante pour lancer les réparations.', 'warning', random)
+  }
+  const repairCompletesAt = now + getRepairDuration(vehicle) * 1_000
+  return withNotification(
+    {
+      ...state,
+      cash: state.cash - cost,
+      vehicles: state.vehicles.map((item) =>
+        item.id === vehicleId
+          ? {
+              ...item,
+              repairCosts: item.repairCosts + cost,
+              repairStartedAt: now,
+              repairCompletesAt,
+              status: 'repairing' as const,
+            }
+          : item,
+      ),
+    },
+    `Réparations lancées sur la ${vehicle.model}.`,
+    'neutral',
+    random,
+  )
+}
+
+export const skipRepair = (
+  state: GameState,
+  vehicleId: string,
+  random: RandomSource = Math.random,
+) => {
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (!vehicle || vehicle.status !== 'needs-decision') return state
+  return withNotification(
+    {
+      ...state,
+      vehicles: state.vehicles.map((item) =>
+        item.id === vehicleId
+          ? { ...item, repairsSkipped: true, status: 'ready' as const }
+          : item,
+      ),
+    },
+    `${vehicle.model} préparée pour une vente en l’état.`,
+    'warning',
+    random,
+  )
+}
+
+export const listVehicle = (
+  state: GameState,
+  vehicleId: string,
+  price: number,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (
+    !vehicle ||
+    vehicle.kept ||
+    vehicle.status !== 'ready' ||
+    !Number.isFinite(price) ||
+    price < 1_000
+  ) return state
+  const normalizedPrice = roundTo(price, 100)
+  const chance = getSaleChance(vehicle, normalizedPrice)
+  return withNotification(
+    {
+      ...state,
+      vehicles: state.vehicles.map((item) =>
+        item.id === vehicleId
+          ? {
+              ...item,
+              askingPrice: normalizedPrice,
+              saleChance: chance,
+              nextOfferAt: now + randomInteger(7, 13, random) * 1_000,
+              status: 'listed' as const,
+            }
+          : item,
+      ),
+    },
+    `${vehicle.model} publiée à ${normalizedPrice.toLocaleString('fr-FR')} €.`,
+    'neutral',
+    random,
+  )
+}
+
+const createOffer = (vehicle: OwnedVehicle, random: RandomSource) => {
+  const askingPrice = vehicle.askingPrice ?? getVehicleResaleValue(vehicle)
+  const fairValue = getVehicleResaleValue(vehicle)
+  const rawOffer = askingPrice * randomBetween(0.92, 1.005, random)
+  return roundTo(Math.min(rawOffer, fairValue * 1.04), 100)
+}
+
+export const acceptOffer = (
+  state: GameState,
+  vehicleId: string,
+  random: RandomSource = Math.random,
+) => {
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (!vehicle || vehicle.kept || vehicle.status !== 'offer-received' || !vehicle.offerAmount) return state
+  const profit = vehicle.offerAmount - getVehicleInvestment(vehicle)
+  return withNotification(
+    {
+      ...state,
+      cash: state.cash + vehicle.offerAmount,
+      profitToday: state.profitToday + profit,
+      vehicles: state.vehicles.filter((item) => item.id !== vehicleId),
+    },
+    `${vehicle.model} vendue : +${vehicle.offerAmount.toLocaleString('fr-FR')} € · marge ${profit >= 0 ? '+' : '−'}${Math.abs(profit).toLocaleString('fr-FR')} €.`,
+    profit >= 0 ? 'success' : 'warning',
+    random,
+  )
+}
+
+export const rejectOffer = (
+  state: GameState,
+  vehicleId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (!vehicle || vehicle.status !== 'offer-received') return state
+  return withNotification(
+    {
+      ...state,
+      vehicles: state.vehicles.map((item) =>
+        item.id === vehicleId
+          ? {
+              ...item,
+              offerAmount: undefined,
+              nextOfferAt: now + randomInteger(6, 11, random) * 1_000,
+              status: 'listed' as const,
+            }
+          : item,
+      ),
+    },
+    `Offre refusée pour la ${vehicle.model}. L’annonce reste active.`,
+    'neutral',
+    random,
+  )
+}
+
+export const toggleVehicleKept = (
+  state: GameState,
+  vehicleId: string,
+  random: RandomSource = Math.random,
+) => {
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (!vehicle) return state
+  const kept = !vehicle.kept
+  const cancelsListing = kept && (vehicle.status === 'listed' || vehicle.status === 'offer-received')
+  const vehicles = state.vehicles.map((item) => {
+    if (item.id !== vehicleId) return item
+    return {
+      ...item,
+      kept,
+      ...(cancelsListing
+        ? {
+            status: 'ready' as const,
+            askingPrice: undefined,
+            saleChance: undefined,
+            nextOfferAt: undefined,
+            offerAmount: undefined,
+          }
+        : {}),
+    }
+  })
+
+  return withNotification(
+    { ...state, vehicles },
+    kept
+      ? `${vehicle.model} rejoint la collection${cancelsListing ? ' · annonce retirée' : ''}.`
+      : `${vehicle.model} repasse dans le stock actif.`,
+    'neutral',
+    random,
+  )
+}
+
+export const acquireProperty = (
+  state: GameState,
+  offerId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const offer = PROPERTY_MARKET.find((item) => item.id === offerId)
+  if (!offer || state.properties.some((property) => property.id === offerId)) return state
+  if (state.cash < offer.acquisitionCost) {
+    return withNotification(state, 'Trésorerie insuffisante pour acquérir ce local.', 'warning', random)
+  }
+
+  const operational = offer.workCost === 0
+  const property: OwnedProperty = {
+    ...offer,
+    instanceId: makeId('property', now, random),
+    status: operational ? 'operational' : 'works-required',
+    acquiredAt: now,
+    nextChargeAt: now + PROPERTY_CHARGE_CYCLE_MS,
+  }
+
+  return withNotification(
+    {
+      ...state,
+      cash: state.cash - offer.acquisitionCost,
+      properties: [...state.properties, property],
+    },
+    operational
+      ? `${offer.name} opérationnel · +${offer.capacity} places.`
+      : `${offer.name} acquis. Les travaux restent à lancer.`,
+    'success',
+    random,
+  )
+}
+
+export const startPropertyWorks = (
+  state: GameState,
+  propertyId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const property = state.properties.find((item) => item.instanceId === propertyId)
+  if (!property || property.status !== 'works-required') return state
+  if (state.cash < property.workCost) {
+    return withNotification(state, 'Trésorerie insuffisante pour lancer ces travaux.', 'warning', random)
+  }
+
+  return withNotification(
+    {
+      ...state,
+      cash: state.cash - property.workCost,
+      properties: state.properties.map((item) =>
+        item.instanceId === propertyId
+          ? {
+              ...item,
+              status: 'renovating' as const,
+              workStartedAt: now,
+              workCompletesAt: now + property.workDurationSeconds * 1_000,
+            }
+          : item,
+      ),
+    },
+    `Travaux lancés dans ${property.name}.`,
+    'neutral',
+    random,
+  )
+}
+
+export const advanceGame = (
+  state: GameState,
+  now: number,
+  random: RandomSource = Math.random,
+): GameState => {
+  let changed = false
+  let notifications = state.notifications
+  let cash = state.cash
+  let chargedAmount = 0
+  const currentDayKey = getDayKey(now)
+  const profitToday = currentDayKey === state.profitDayKey ? state.profitToday : 0
+  if (profitToday !== state.profitToday) changed = true
+
+  const addNotification = (message: string, tone: GameNotification['tone']) => {
+    notifications = [
+      ...notifications.slice(-2),
+      { id: makeId('note', now, random), tone, message },
+    ]
+  }
+
+  const vehicles = state.vehicles.map((vehicle) => {
+    if (vehicle.status === 'repairing' && vehicle.repairCompletesAt && vehicle.repairCompletesAt <= now) {
+      changed = true
+      addNotification(`${vehicle.model} réparée. Elle peut maintenant être mise en vente.`, 'success')
+      return {
+        ...vehicle,
+        problems: vehicle.problems.map((problem) => ({ ...problem, repaired: true })),
+        repairCompletesAt: undefined,
+        status: 'ready' as const,
+      }
+    }
+
+    if (vehicle.status === 'listed' && vehicle.nextOfferAt && vehicle.nextOfferAt <= now) {
+      changed = true
+      if (boundedRandom(random) <= (vehicle.saleChance ?? 0.5)) {
+        const offerAmount = createOffer(vehicle, random)
+        addNotification(
+          `Nouvelle offre pour la ${vehicle.model} : ${offerAmount.toLocaleString('fr-FR')} €.`,
+          'success',
+        )
+        return { ...vehicle, offerAmount, status: 'offer-received' as const }
+      }
+      return {
+        ...vehicle,
+        nextOfferAt: now + randomInteger(6, 11, random) * 1_000,
+      }
+    }
+
+    return vehicle
+  })
+
+  const properties = state.properties.map((property) => {
+    let nextProperty = property
+
+    if (
+      property.status === 'renovating' &&
+      property.workCompletesAt &&
+      property.workCompletesAt <= now
+    ) {
+      changed = true
+      nextProperty = {
+        ...property,
+        status: 'operational' as const,
+        workCompletesAt: undefined,
+      }
+      addNotification(`${property.name} est opérationnel · +${property.capacity} places.`, 'success')
+    }
+
+    if (nextProperty.nextChargeAt <= now) {
+      const elapsedCycles = Math.floor(
+        (now - nextProperty.nextChargeAt) / PROPERTY_CHARGE_CYCLE_MS,
+      ) + 1
+      chargedAmount += getPropertyCycleCost(nextProperty) * elapsedCycles
+      changed = true
+      nextProperty = {
+        ...nextProperty,
+        nextChargeAt: nextProperty.nextChargeAt + elapsedCycles * PROPERTY_CHARGE_CYCLE_MS,
+      }
+    }
+
+    return nextProperty
+  })
+
+  if (chargedAmount > 0) {
+    cash -= chargedAmount
+    addNotification(
+      `Échéances immobilières prélevées : ${chargedAmount.toLocaleString('fr-FR')} €.`,
+      cash < 0 ? 'warning' : 'neutral',
+    )
+    if (cash < 0) {
+      addNotification(
+        `Découvert : −${Math.abs(cash).toLocaleString('fr-FR')} €, réduis tes charges ou vends un véhicule.`,
+        'warning',
+      )
+    }
+  }
+
+  const activeListings = state.listings.filter((listing) => listing.expiresAt > now)
+  if (activeListings.length !== state.listings.length) changed = true
+
+  let nextState: GameState = changed
+    ? {
+        ...state,
+        cash,
+        profitToday,
+        profitDayKey: currentDayKey,
+        vehicles,
+        properties,
+        listings: activeListings,
+        notifications,
+      }
+    : state
+
+  if (activeListings.length < LISTING_TARGET) {
+    nextState = topUpListings(nextState, now, random)
+  }
+  return nextState
+}

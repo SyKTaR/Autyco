@@ -1,0 +1,35 @@
+begin;
+
+drop trigger if exists on_auth_user_created_garage_game on auth.users;
+drop trigger if exists players_set_updated_at on public.players;
+drop trigger if exists owned_vehicles_set_updated_at on public.owned_vehicles;
+drop trigger if exists owned_properties_set_updated_at on public.owned_properties;
+drop function if exists public.game_action(text, jsonb, uuid);
+drop function if exists public.get_game_state();
+drop function if exists private.perform_game_action(text, jsonb, uuid);
+drop function if exists private.load_my_game_state();
+drop function if exists private.build_game_state(uuid);
+drop function if exists private.advance_game(uuid);
+drop function if exists private.sale_chance(uuid, bigint);
+drop function if exists private.vehicle_resale_value(uuid);
+drop function if exists private.garage_capacity(uuid);
+drop function if exists private.handle_new_auth_user();
+drop function if exists private.ensure_player(uuid);
+drop function if exists private.ensure_market_listings(uuid, integer);
+drop function if exists private.record_event(uuid, text, jsonb);
+drop function if exists private.add_notification(uuid, text, text);
+drop function if exists private.set_updated_at();
+drop table if exists private.action_receipts;
+drop table if exists public.notifications;
+drop table if exists public.game_events;
+drop table if exists public.transactions;
+drop table if exists public.vehicle_problems;
+drop table if exists public.owned_vehicles;
+drop table if exists public.market_listings;
+drop table if exists public.owned_properties;
+drop table if exists public.players;
+drop table if exists private.property_templates;
+drop table if exists private.problem_templates;
+drop table if exists private.vehicle_templates;
+
+commit;
