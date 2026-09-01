@@ -65,7 +65,7 @@ export const AuthScreen = () => {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-paper px-4 py-8 text-ink sm:px-6">
+    <main className="entry-main">
       <section className="w-full max-w-[34rem]">
         <div className="mb-6 flex items-center justify-center gap-3 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-signal-soft text-signal shadow-inset" aria-hidden="true">

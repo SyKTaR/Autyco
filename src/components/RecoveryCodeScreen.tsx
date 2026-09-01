@@ -9,11 +9,11 @@ export const RecoveryCodeScreen = () => {
   const restored = setupKind === 'restored'
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-paper px-4 py-8 text-ink sm:px-6">
+    <main className="entry-main">
       <section className="panel w-full max-w-[36rem] p-5 sm:p-8">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <p className="text-sm font-semibold text-signal-hover">AUTYCO</p>
-          <p className="truncate text-sm text-muted">{identity.playerName} · {identity.garageName}</p>
+          <p className="min-w-0 break-words text-sm text-muted sm:truncate">{identity.playerName} · {identity.garageName}</p>
         </div>
         <p className="eyebrow mt-8">{restored ? 'Partie restaurée' : 'Garage créé'}</p>
         <h1 className="mt-3 font-display text-3xl font-semibold leading-tight tracking-[-0.035em] sm:text-4xl">

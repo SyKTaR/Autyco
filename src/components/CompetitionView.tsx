@@ -411,7 +411,7 @@ export const CompetitionView = ({ inviteCode, onInviteCodeChange }: CompetitionV
 
   if (auth.status !== 'authenticated') {
     return (
-      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[82rem] px-4 pb-28 pt-10 outline-none sm:px-6 sm:pt-14 md:pb-16 lg:px-8">
+      <main id="main-content" tabIndex={-1} className="app-main">
         <p className="eyebrow">Multijoueur privé</p>
         <h1 className="page-title">Compétition</h1>
         <section className="panel mt-8 max-w-2xl p-6 sm:p-8">
@@ -426,7 +426,7 @@ export const CompetitionView = ({ inviteCode, onInviteCodeChange }: CompetitionV
   }
 
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[82rem] px-4 pb-28 pt-10 outline-none sm:px-6 sm:pt-14 md:pb-16 lg:px-8">
+    <main id="main-content" tabIndex={-1} className="app-main">
       <header className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>
           <p className="eyebrow">Entre potes uniquement</p>
@@ -464,7 +464,7 @@ export const CompetitionView = ({ inviteCode, onInviteCodeChange }: CompetitionV
       )}
 
       {loading ? (
-        <div className="panel mt-8 flex min-h-52 items-center justify-center p-6 text-sm text-muted" role="status">
+        <div className="panel mt-8 flex min-h-52 items-center justify-center p-6 text-sm text-muted" role="status" aria-live="polite">
           Chargement de la dépendance…
         </div>
       ) : !server ? (
@@ -521,7 +521,7 @@ export const CompetitionView = ({ inviteCode, onInviteCodeChange }: CompetitionV
               {!showSwitch && <button type="button" className="button-secondary" onClick={() => setShowSwitch(true)}>Changer de serveur</button>}
               {confirmLeave ? (
                 <>
-                  <button type="button" className="inline-flex min-h-12 items-center rounded-full bg-danger/10 px-5 text-sm font-bold text-danger" disabled={busy} onClick={() => void leave()}>
+                  <button type="button" className="inline-flex min-h-12 max-w-full items-center rounded-full bg-danger/10 px-5 text-center text-sm font-bold text-danger" disabled={busy} onClick={() => void leave()}>
                     {busy ? 'Départ…' : 'Confirmer le départ'}
                   </button>
                   <button type="button" className="button-secondary" disabled={busy} onClick={() => setConfirmLeave(false)}>Annuler</button>
@@ -540,7 +540,7 @@ export const CompetitionView = ({ inviteCode, onInviteCodeChange }: CompetitionV
                 <div className="mt-3 flex flex-wrap gap-3">
                   {confirmClose ? (
                     <>
-                      <button type="button" className="inline-flex min-h-12 items-center rounded-full bg-danger/10 px-5 text-sm font-bold text-danger" disabled={busy} onClick={() => void close()}>
+                    <button type="button" className="inline-flex min-h-12 max-w-full items-center rounded-full bg-danger/10 px-5 text-center text-sm font-bold text-danger" disabled={busy} onClick={() => void close()}>
                         {busy ? 'Fermeture…' : 'Confirmer la fermeture définitive'}
                       </button>
                       <button type="button" className="button-secondary" disabled={busy} onClick={() => setConfirmClose(false)}>Annuler</button>

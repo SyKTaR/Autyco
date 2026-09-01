@@ -300,7 +300,7 @@ const ContextualAction = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number
               Marge nette {margin >= 0 ? '+' : '−'}{formatMoney(Math.abs(margin))}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
               className="button-secondary flex-1"
@@ -332,7 +332,7 @@ const VehicleCard = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number }) =
   return (
     <InventoryCard className={`overflow-hidden ${vehicle.kept ? 'ring-1 ring-signal/40 shadow-raised' : ''}`}>
       <div className="p-4 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 gap-3 sm:gap-4">
             <VehicleAvatar />
             <div className="min-w-0">
@@ -347,7 +347,7 @@ const VehicleCard = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number }) =
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
             {vehicle.kept && <StatusBadge tone="inverse">Collection</StatusBadge>}
             <StatusBadge tone={statusTone[vehicle.status]}>{statusLabel[vehicle.status]}</StatusBadge>
           </div>
@@ -379,7 +379,7 @@ export const GarageView = ({ onOpenMarket }: GarageViewProps) => {
   )
 
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[82rem] px-4 pb-28 pt-10 outline-none sm:px-6 sm:pt-12 md:pb-14 lg:px-8 lg:pt-16">
+    <main id="main-content" tabIndex={-1} className="app-main">
       <header className="mb-8 flex flex-col justify-between gap-6 sm:flex-row sm:items-end lg:mb-10">
         <div>
           <p className="eyebrow">Inventaire joueur</p>

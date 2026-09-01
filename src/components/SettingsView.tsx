@@ -42,7 +42,7 @@ export const SettingsView = () => {
   const selectedAccent = accentPresets.find((preset) => preset.id === accentId)
 
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[82rem] px-4 pb-28 pt-10 outline-none sm:px-6 sm:pt-14 md:pb-16 lg:px-8">
+    <main id="main-content" tabIndex={-1} className="app-main">
       <header className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>
           <p className="eyebrow">Configuration du garage</p>

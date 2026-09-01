@@ -48,7 +48,7 @@ export const SummaryStrip = ({ state }: { state: GameState }) => {
 
   return (
     <section className="bg-paper px-4 pt-3 sm:px-6 sm:pt-4 lg:px-8" aria-label="Situation du garage">
-      <div className="mx-auto grid w-full max-w-[82rem] grid-cols-2 gap-2 rounded-[1.75rem] bg-soft/35 p-2 shadow-inset md:grid-cols-5">
+      <div className="mx-auto grid w-full max-w-[82rem] grid-cols-2 gap-1.5 rounded-[1.75rem] bg-soft/35 p-1.5 shadow-inset sm:gap-2 sm:p-2 md:grid-cols-5">
         {metrics.map((metric, index) => (
           <MetricTile
             key={metric.label}

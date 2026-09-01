@@ -3,8 +3,10 @@ import { describe, it } from 'node:test'
 import { createInitialGame } from './engine'
 import {
   loadGame,
+  loadLastActiveAt,
   loadRemoteGame,
   saveGame,
+  saveLastActiveAt,
   saveRemoteGame,
   type StorageAdapter,
 } from './storage'
@@ -92,5 +94,15 @@ describe('sauvegarde locale', () => {
     assert.equal(loadGame(storage)?.cash, 20_000)
     assert.equal(loadRemoteGame('player-a', storage)?.cash, 87_654)
     assert.equal(loadRemoteGame('player-b', storage), null)
+  })
+
+  it('isole aussi la dernière activité locale de chaque compte', () => {
+    const storage = new MemoryStorage()
+
+    assert.equal(saveLastActiveAt(10_000, undefined, storage), true)
+    assert.equal(saveLastActiveAt(20_000, 'player-a', storage), true)
+    assert.equal(loadLastActiveAt(undefined, storage), 10_000)
+    assert.equal(loadLastActiveAt('player-a', storage), 20_000)
+    assert.equal(loadLastActiveAt('player-b', storage), null)
   })
 })

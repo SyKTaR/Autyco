@@ -3,6 +3,8 @@ import type { GameState, MarketListing, OwnedVehicle, GameNotification } from '.
 const STORAGE_KEY = 'garage-game:save:v2'
 const LEGACY_STORAGE_KEY = 'garage-game:save:v1'
 const remoteStorageKey = (playerId: string) => `garage-game:remote-cache:${playerId}:v2`
+const LAST_ACTIVE_KEY = 'garage-game:last-active:v1'
+const remoteLastActiveKey = (playerId: string) => `garage-game:remote-last-active:${playerId}:v1`
 
 export interface StorageAdapter {
   getItem(key: string): string | null
@@ -123,6 +125,33 @@ export const loadRemoteGame = (
   try {
     const rawSave = storage.getItem(remoteStorageKey(playerId))
     return rawSave ? migrateGameState(JSON.parse(rawSave) as unknown) : null
+  } catch {
+    return null
+  }
+}
+
+export const saveLastActiveAt = (
+  timestamp: number,
+  playerId?: string,
+  storage = getBrowserStorage(),
+) => {
+  if (!storage || !Number.isFinite(timestamp) || timestamp <= 0) return false
+  try {
+    storage.setItem(playerId ? remoteLastActiveKey(playerId) : LAST_ACTIVE_KEY, String(timestamp))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export const loadLastActiveAt = (
+  playerId?: string,
+  storage = getBrowserStorage(),
+): number | null => {
+  if (!storage) return null
+  try {
+    const value = Number(storage.getItem(playerId ? remoteLastActiveKey(playerId) : LAST_ACTIVE_KEY))
+    return Number.isFinite(value) && value > 0 ? value : null
   } catch {
     return null
   }

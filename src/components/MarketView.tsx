@@ -103,7 +103,7 @@ export const MarketView = ({ onPurchase }: MarketViewProps) => {
   const garageFull = state.vehicles.length >= getGarageCapacity(state)
 
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[82rem] px-4 pb-28 pt-10 outline-none sm:px-6 sm:pt-12 md:pb-14 lg:px-8 lg:pt-16">
+    <main id="main-content" tabIndex={-1} className="app-main">
       <header className="mb-8 flex flex-col justify-between gap-6 sm:flex-row sm:items-end lg:mb-10">
         <div>
           <p className="eyebrow">Petites annonces en direct</p>

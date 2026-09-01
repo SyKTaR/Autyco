@@ -30,7 +30,7 @@ export const ConnectionStatus = () => {
             </span>
           </span>
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="-ml-3 flex flex-wrap gap-2 sm:ml-0 sm:justify-end">
           {connected && syncStatus === 'error' && (
             <button type="button" className="text-action text-warning" onClick={() => void retrySync()}>
               Recharger le serveur

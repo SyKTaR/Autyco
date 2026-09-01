@@ -1,5 +1,5 @@
 export const BackendLoading = () => (
-  <main className="flex min-h-dvh items-center justify-center bg-paper px-4 text-ink">
+  <main className="entry-main">
     <div className="panel w-full max-w-md p-6 sm:p-8" role="status" aria-live="polite">
       <div className="flex items-center gap-3">
         <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-signal-soft text-signal" aria-hidden="true">

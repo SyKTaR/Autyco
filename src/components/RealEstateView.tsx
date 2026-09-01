@@ -76,7 +76,7 @@ const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: nu
   return (
     <InventoryCard className="overflow-hidden shadow-card">
       <div className="p-4 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 gap-3">
             <PropertyAvatar />
             <div className="min-w-0">
@@ -88,7 +88,7 @@ const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: nu
               </h3>
             </div>
           </div>
-          <StatusBadge tone={statusTone[property.status]} className="shrink-0">{statusLabel[property.status]}</StatusBadge>
+          <StatusBadge tone={statusTone[property.status]} className="w-fit shrink-0">{statusLabel[property.status]}</StatusBadge>
         </div>
 
         <div className="subtle-card mt-5 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3">
@@ -173,7 +173,7 @@ const MarketPropertyCard = ({ offer, acquired }: { offer: PropertyOffer; acquire
   return (
     <InventoryCard className="flex h-full flex-col overflow-hidden transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-raised">
       <div className="flex-1 p-4 sm:p-6">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 gap-3">
             <PropertyAvatar />
             <div>
@@ -183,7 +183,7 @@ const MarketPropertyCard = ({ offer, acquired }: { offer: PropertyOffer; acquire
               </h3>
             </div>
           </div>
-          <StatusBadge>{modeLabel[offer.acquisitionMode]}</StatusBadge>
+          <StatusBadge className="w-fit">{modeLabel[offer.acquisitionMode]}</StatusBadge>
         </div>
         <p className="mt-4 text-sm leading-5 text-muted md:min-h-[3.75rem]">{offer.description}</p>
         <div className="mt-5">
@@ -221,7 +221,7 @@ export const RealEstateView = () => {
   const recurringCosts = getRecurringPropertyCosts(state)
 
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[82rem] px-4 pb-28 pt-10 outline-none sm:px-6 sm:pt-12 md:pb-14 lg:px-8 lg:pt-16">
+    <main id="main-content" tabIndex={-1} className="app-main">
       <header className="mb-10 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>
           <p className="eyebrow">Extension de la flotte</p>
@@ -231,18 +231,18 @@ export const RealEstateView = () => {
             toutes les 24 heures, même pendant ton absence.
           </p>
         </div>
-        <dl className="grid grid-cols-3 overflow-hidden rounded-2xl bg-surface shadow-card shadow-inset">
+        <dl className="grid grid-cols-2 overflow-hidden rounded-2xl bg-surface shadow-card shadow-inset sm:grid-cols-3">
           <div className="min-w-0 border-r border-line px-3 py-3 sm:px-5 sm:py-4">
             <dt className="text-sm font-medium text-muted">Capacité</dt>
             <dd className="mt-1 font-mono text-lg font-semibold">
               {state.vehicles.length}/{totalCapacity}
             </dd>
           </div>
-          <div className="min-w-0 border-r border-line px-3 py-3 sm:px-5 sm:py-4">
+          <div className="min-w-0 px-3 py-3 sm:border-r sm:border-line sm:px-5 sm:py-4">
             <dt className="text-sm font-medium text-muted">Base</dt>
             <dd className="mt-1 font-mono text-lg font-semibold">{BASE_GARAGE_CAPACITY}</dd>
           </div>
-          <div className="min-w-0 px-3 py-3 sm:px-5 sm:py-4">
+          <div className="col-span-2 min-w-0 border-t border-line px-3 py-3 sm:col-span-1 sm:border-t-0 sm:px-5 sm:py-4">
             <dt className="text-sm font-medium text-muted">Par jour</dt>
             <dd className="mt-1 truncate font-mono text-lg font-semibold">{formatMoney(recurringCosts)}</dd>
           </div>

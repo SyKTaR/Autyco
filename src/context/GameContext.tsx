@@ -12,11 +12,14 @@ import { readableError, useAuth } from '../backend/AuthContext'
 import { advanceGame, createInitialGame } from '../game/engine'
 import { gameReducer } from '../game/reducer'
 import {
+  loadLastActiveAt,
   loadGame,
   loadRemoteGame,
+  saveLastActiveAt,
   saveGame,
   saveRemoteGame,
 } from '../game/storage'
+import { createReturnSummary, type ReturnSummary } from '../game/returnSummary'
 import type { GameAction, GameState } from '../types/game'
 
 export type GameSyncStatus = 'local' | 'loading' | 'synced' | 'syncing' | 'error'
@@ -27,6 +30,8 @@ interface GameContextValue {
   dispatch: (action: GameAction) => void
   syncStatus: GameSyncStatus
   syncMessage: string | null
+  returnSummary: ReturnSummary | null
+  dismissReturnSummary: () => void
   retrySync: () => Promise<void>
 }
 
@@ -35,20 +40,53 @@ const GameContext = createContext<GameContextValue | null>(null)
 const initializeGame = (playerId?: string) => {
   const now = Date.now()
   const saved = playerId ? loadRemoteGame(playerId) : loadGame()
-  return saved ? advanceGame(saved, now) : createInitialGame(now)
+  const state = saved ? advanceGame(saved, now) : createInitialGame(now)
+  return {
+    state,
+    saved,
+    lastActiveAt: loadLastActiveAt(playerId),
+    initializedAt: now,
+  }
 }
 
 export const GameProvider = ({ children }: PropsWithChildren) => {
   const auth = useAuth()
   const playerId = auth.session?.user.id
-  const [state, setState] = useState(() => initializeGame(playerId))
+  const [initialGame] = useState(() => initializeGame(playerId))
+  const [state, setState] = useState(initialGame.state)
   const [now, setNow] = useState(Date.now())
+  const [returnSummary, setReturnSummary] = useState<ReturnSummary | null>(() =>
+    auth.status === 'authenticated'
+      ? null
+      : createReturnSummary(
+          initialGame.saved,
+          initialGame.state,
+          initialGame.lastActiveAt,
+          initialGame.initializedAt,
+        ),
+  )
   const [syncStatus, setSyncStatus] = useState<GameSyncStatus>(
     auth.status === 'authenticated' ? 'loading' : 'local',
   )
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const remoteAvailableRef = useRef(auth.status === 'authenticated')
   const actionQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const returnSummaryResolvedRef = useRef(auth.status !== 'authenticated')
+
+  const resolveReturnSummary = useCallback((nextState: GameState) => {
+    if (returnSummaryResolvedRef.current) return
+    returnSummaryResolvedRef.current = true
+    setReturnSummary(
+      createReturnSummary(
+        initialGame.saved,
+        nextState,
+        initialGame.lastActiveAt,
+        initialGame.initializedAt,
+      ),
+    )
+  }, [initialGame])
+
+  const dismissReturnSummary = useCallback(() => setReturnSummary(null), [])
 
   const cacheState = useCallback((nextState: GameState) => {
     if (playerId) saveRemoteGame(nextState, playerId)
@@ -89,9 +127,13 @@ export const GameProvider = ({ children }: PropsWithChildren) => {
     const hydrate = async () => {
       try {
         const remoteState = await auth.getRemoteGame()
-        if (active) applyRemoteState(remoteState)
+        if (active) {
+          resolveReturnSummary(remoteState)
+          applyRemoteState(remoteState)
+        }
       } catch (error) {
         if (!active) return
+        resolveReturnSummary(initialGame.state)
         remoteAvailableRef.current = false
         setSyncStatus('error')
         setSyncMessage(
@@ -103,7 +145,14 @@ export const GameProvider = ({ children }: PropsWithChildren) => {
     return () => {
       active = false
     }
-  }, [auth.status, playerId, auth.getRemoteGame, applyRemoteState])
+  }, [
+    auth.status,
+    playerId,
+    auth.getRemoteGame,
+    applyRemoteState,
+    initialGame.state,
+    resolveReturnSummary,
+  ])
 
   const dispatch = useCallback((action: GameAction) => {
     if (auth.status !== 'authenticated' || !remoteAvailableRef.current) {
@@ -142,6 +191,23 @@ export const GameProvider = ({ children }: PropsWithChildren) => {
   }, [state, cacheState])
 
   useEffect(() => {
+    const saveActivity = () => saveLastActiveAt(Date.now(), playerId)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') saveActivity()
+    }
+
+    saveActivity()
+    const interval = window.setInterval(saveActivity, 30_000)
+    window.addEventListener('pagehide', saveActivity)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('pagehide', saveActivity)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [playerId])
+
+  useEffect(() => {
     const interval = window.setInterval(() => {
       const currentTime = Date.now()
       setNow(currentTime)
@@ -166,8 +232,19 @@ export const GameProvider = ({ children }: PropsWithChildren) => {
     dispatch,
     syncStatus,
     syncMessage,
+    returnSummary,
+    dismissReturnSummary,
     retrySync,
-  }), [state, now, dispatch, syncStatus, syncMessage, retrySync])
+  }), [
+    state,
+    now,
+    dispatch,
+    syncStatus,
+    syncMessage,
+    returnSummary,
+    dismissReturnSummary,
+    retrySync,
+  ])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

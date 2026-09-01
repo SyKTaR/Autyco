@@ -5,6 +5,7 @@ export type AppView = 'garage' | 'market' | 'real-estate' | 'competition' | 'set
 interface AppHeaderProps {
   view: AppView
   onViewChange: (view: AppView) => void
+  attention: Partial<Record<AppView, number>>
 }
 
 const NavIcon = ({ view }: { view: AppView }) => {
@@ -27,35 +28,46 @@ const NavButton = ({
   active,
   target,
   label,
+  attentionCount = 0,
   onClick,
 }: {
   active: boolean
   target: AppView
   label: string
+  attentionCount?: number
   onClick: () => void
 }) => (
   <button
     type="button"
     onClick={onClick}
-    className={`flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition-[background-color,color,transform] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal md:flex-none md:justify-start md:px-4 ${
+    className={`relative flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-0.5 py-1.5 text-sm font-semibold leading-none tracking-[-0.02em] transition-[background-color,color,transform] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal md:min-h-12 md:flex-none md:flex-row md:justify-start md:gap-2 md:rounded-full md:px-4 md:py-2 md:tracking-normal ${
       active
         ? 'bg-drive text-paper shadow-card'
         : 'text-muted hover:bg-soft hover:text-ink'
     }`}
     aria-current={active ? 'page' : undefined}
-    aria-label={label}
+    aria-label={
+      attentionCount > 0
+        ? `${label}, ${attentionCount} action${attentionCount > 1 ? 's' : ''} disponible${attentionCount > 1 ? 's' : ''}`
+        : label
+    }
   >
     <NavIcon view={target} />
-    <span className="hidden truncate sm:inline md:hidden xl:inline">{label}</span>
+    <span className="block max-w-full truncate md:hidden xl:block">{label}</span>
+    {attentionCount > 0 && (
+      <span className="absolute right-1 top-1 min-w-5 rounded-full bg-signal px-1.5 py-1 font-mono text-[0.6875rem] font-bold leading-none text-paper md:-right-1 md:-top-1" aria-hidden="true">
+        {attentionCount > 9 ? '9+' : attentionCount}
+      </span>
+    )}
   </button>
 )
 
-export const AppHeader = ({ view, onViewChange }: AppHeaderProps) => {
+export const AppHeader = ({ view, onViewChange, attention }: AppHeaderProps) => {
   const { identity } = useAuth()
 
   return (
     <>
-      <header className="bg-paper px-3 pt-3 text-ink sm:px-5 sm:pt-4">
+      <header className="bg-paper px-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-ink sm:px-5 sm:pt-4">
         <div className="mx-auto flex min-h-[5rem] w-full max-w-[82rem] items-center justify-between gap-5 rounded-[1.75rem] bg-surface px-4 shadow-card shadow-inset sm:px-6">
           <button
             type="button"
@@ -79,9 +91,9 @@ export const AppHeader = ({ view, onViewChange }: AppHeaderProps) => {
           </button>
 
           <nav className="hidden items-center gap-1 rounded-full bg-paper/75 p-1 md:flex" aria-label="Navigation principale">
-            <NavButton active={view === 'garage'} target="garage" label="Garage" onClick={() => onViewChange('garage')} />
+            <NavButton active={view === 'garage'} target="garage" label="Garage" attentionCount={attention.garage} onClick={() => onViewChange('garage')} />
             <NavButton active={view === 'market'} target="market" label="Marché" onClick={() => onViewChange('market')} />
-            <NavButton active={view === 'real-estate'} target="real-estate" label="Immobilier" onClick={() => onViewChange('real-estate')} />
+            <NavButton active={view === 'real-estate'} target="real-estate" label="Immobilier" attentionCount={attention['real-estate']} onClick={() => onViewChange('real-estate')} />
             <NavButton active={view === 'competition'} target="competition" label="Compétition" onClick={() => onViewChange('competition')} />
             <NavButton active={view === 'settings'} target="settings" label="Réglages" onClick={() => onViewChange('settings')} />
           </nav>
@@ -89,12 +101,12 @@ export const AppHeader = ({ view, onViewChange }: AppHeaderProps) => {
       </header>
 
       <nav
-        className="fixed inset-x-2 bottom-2 z-30 flex gap-1 rounded-[1.75rem] bg-surface p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-raised shadow-inset md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 flex gap-1 rounded-t-[1.75rem] bg-surface px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-raised shadow-inset md:hidden"
         aria-label="Navigation principale mobile"
       >
-        <NavButton active={view === 'garage'} target="garage" label="Garage" onClick={() => onViewChange('garage')} />
+        <NavButton active={view === 'garage'} target="garage" label="Garage" attentionCount={attention.garage} onClick={() => onViewChange('garage')} />
         <NavButton active={view === 'market'} target="market" label="Marché" onClick={() => onViewChange('market')} />
-        <NavButton active={view === 'real-estate'} target="real-estate" label="Locaux" onClick={() => onViewChange('real-estate')} />
+        <NavButton active={view === 'real-estate'} target="real-estate" label="Locaux" attentionCount={attention['real-estate']} onClick={() => onViewChange('real-estate')} />
         <NavButton active={view === 'competition'} target="competition" label="Serveur" onClick={() => onViewChange('competition')} />
         <NavButton active={view === 'settings'} target="settings" label="Réglages" onClick={() => onViewChange('settings')} />
       </nav>

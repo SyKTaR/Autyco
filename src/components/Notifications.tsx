@@ -16,7 +16,7 @@ export const Notifications = () => {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-50 flex flex-col items-end gap-2 sm:left-auto sm:right-5 sm:top-5 sm:w-[24rem]"
+      className="pointer-events-none fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-50 flex max-h-[calc(100dvh-6rem)] flex-col items-end gap-2 overflow-y-auto sm:left-auto sm:right-5 sm:top-5 sm:w-[24rem]"
       aria-live="polite"
       aria-label="Notifications"
     >
