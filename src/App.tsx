@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AppHeader, type AppView } from './components/AppHeader'
 import { ConnectionStatus } from './components/ConnectionStatus'
+import { CompetitionView, type ServerInviteCode } from './components/CompetitionView'
 import { GarageView } from './components/GarageView'
 import { MarketView } from './components/MarketView'
 import { Notifications } from './components/Notifications'
@@ -11,6 +12,7 @@ import { useGame } from './context/GameContext'
 
 function App() {
   const [view, setView] = useState<AppView>('garage')
+  const [serverInviteCode, setServerInviteCode] = useState<ServerInviteCode | null>(null)
   const { state } = useGame()
 
   return (
@@ -27,6 +29,8 @@ function App() {
         <MarketView onPurchase={() => setView('garage')} />
       ) : view === 'real-estate' ? (
         <RealEstateView />
+      ) : view === 'competition' ? (
+        <CompetitionView inviteCode={serverInviteCode} onInviteCodeChange={setServerInviteCode} />
       ) : (
         <SettingsView />
       )}

@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 import {
   SupabaseRequestError,
+  createPrivateServer,
   createPlayerIdentity,
+  fetchCurrentPrivateServer,
+  fetchPrivateServerLeaderboard,
+  joinPrivateServer,
   loadStoredSession,
   loadSupabaseConfiguration,
   performRemoteGameAction,
@@ -173,5 +177,92 @@ describe('adaptateur Supabase', () => {
     assert.equal('now' in (requestBody.p_payload as Record<string, unknown>), false)
     assert.match(String(requestBody.p_request_id), /^[0-9a-f-]{36}$/)
     assert.equal(result.cash, remoteState.cash)
+  })
+
+  it('crée un serveur privé via la RPC et valide son code éphémère', async () => {
+    let requestUrl = ''
+    let requestBody: Record<string, unknown> = {}
+    globalThis.fetch = async (input, init) => {
+      requestUrl = String(input)
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({
+        ok: true,
+        server: {
+          id: 'server-1',
+          name: 'Les Docks',
+          memberCount: 1,
+          createdAt: 1_000,
+          isOwner: true,
+        },
+        inviteCode: 'SRV-0123-4567-89AB-CDEF-0123-4567-89AB-CDEF',
+      }), { status: 200 })
+    }
+
+    const result = await createPrivateServer(configuration, session, ' Les Docks ')
+    assert.match(requestUrl, /\/rest\/v1\/rpc\/create_private_server$/)
+    assert.deepEqual(requestBody, {
+      p_name: 'Les Docks',
+      p_replace_current: false,
+    })
+    assert.equal(result.server?.memberCount, 1)
+    assert.match(result.inviteCode ?? '', /^SRV-(?:[0-9A-F]{4}-){7}[0-9A-F]{4}$/)
+  })
+
+  it('préserve la confirmation explicite avant de remplacer un serveur', async () => {
+    let requestBody: Record<string, unknown> = {}
+    globalThis.fetch = async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({
+        ok: false,
+        requiresConfirmation: true,
+        error: 'Rejoindre ce serveur remplacera ta dépendance actuelle.',
+      }), { status: 200 })
+    }
+
+    const result = await joinPrivateServer(
+      configuration,
+      session,
+      'SRV-AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-0000-1111',
+    )
+    assert.equal(result.ok, false)
+    assert.equal(result.requiresConfirmation, true)
+    assert.equal(requestBody.p_replace_current, false)
+    assert.equal(
+      requestBody.p_invite_code,
+      'SRV-AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-0000-1111',
+    )
+  })
+
+  it('accepte une absence de serveur sans fabriquer de données', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ server: null }), { status: 200 })
+    assert.equal(await fetchCurrentPrivateServer(configuration, session), null)
+  })
+
+  it('valide chaque membre du classement en lecture seule', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      server: {
+        id: 'server-1',
+        name: 'Les Docks',
+        memberCount: 2,
+        createdAt: 1_000,
+        isOwner: true,
+      },
+      members: [{
+        rank: 1,
+        playerId: 'player-id',
+        playerName: 'Lucas',
+        garageName: 'Garage des Docks',
+        cash: 20_000,
+        fleetValue: 31_000,
+        totalValue: 51_000,
+        vehicleCount: 2,
+        isCurrentPlayer: true,
+      }],
+    }), { status: 200 })
+
+    const leaderboard = await fetchPrivateServerLeaderboard(configuration, session)
+    assert.equal(leaderboard.members.length, 1)
+    assert.equal(leaderboard.members[0].totalValue, 51_000)
+    assert.equal(leaderboard.members[0].isCurrentPlayer, true)
   })
 })

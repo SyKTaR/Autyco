@@ -8,7 +8,7 @@ const toneClass: Record<StatusTone, string> = {
   success: 'bg-success/10 text-success',
   warning: 'bg-warning/10 text-warning',
   danger: 'bg-danger/10 text-danger',
-  inverse: 'bg-ink text-paper',
+  inverse: 'bg-drive-soft text-drive',
 }
 
 export const StatusBadge = ({

@@ -39,6 +39,40 @@ export interface PlayerIdentityWithRecovery extends PlayerIdentity {
   recoveryCode: string
 }
 
+export interface PrivateServerSummary {
+  id: string
+  name: string
+  memberCount: number
+  createdAt: number
+  isOwner: boolean
+}
+
+export interface PrivateServerMember {
+  rank: number
+  playerId: string
+  playerName: string
+  garageName: string
+  cash: number
+  fleetValue: number
+  totalValue: number
+  vehicleCount: number
+  isCurrentPlayer: boolean
+}
+
+export interface PrivateServerMutation {
+  ok: boolean
+  server?: PrivateServerSummary
+  inviteCode?: string
+  requiresConfirmation?: boolean
+  rateLimited?: boolean
+  error?: string
+}
+
+export interface PrivateServerLeaderboard {
+  server: PrivateServerSummary
+  members: PrivateServerMember[]
+}
+
 interface RecoveryApiResponse extends Partial<PlayerIdentityWithRecovery> {
   ok?: boolean
   error?: string
@@ -216,6 +250,69 @@ const isPlayerIdentity = (value: unknown): value is PlayerIdentity => {
   return typeof identity.garageName === 'string' && typeof identity.playerName === 'string'
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const privateServerFromResponse = (value: unknown): PrivateServerSummary => {
+  if (!isRecord(value)
+    || typeof value.id !== 'string'
+    || typeof value.name !== 'string'
+    || typeof value.memberCount !== 'number'
+    || typeof value.createdAt !== 'number'
+    || typeof value.isOwner !== 'boolean') {
+    throw new SupabaseRequestError('Supabase a renvoyé un serveur privé invalide.', 502)
+  }
+  return {
+    id: value.id,
+    name: value.name,
+    memberCount: value.memberCount,
+    createdAt: value.createdAt,
+    isOwner: value.isOwner,
+  }
+}
+
+const privateServerMutationFromResponse = (value: unknown): PrivateServerMutation => {
+  if (!isRecord(value) || typeof value.ok !== 'boolean') {
+    throw new SupabaseRequestError('Supabase a renvoyé une réponse multijoueur invalide.', 502)
+  }
+  return {
+    ok: value.ok,
+    ...(value.server == null ? {} : { server: privateServerFromResponse(value.server) }),
+    ...(typeof value.inviteCode === 'string' ? { inviteCode: value.inviteCode } : {}),
+    ...(typeof value.requiresConfirmation === 'boolean'
+      ? { requiresConfirmation: value.requiresConfirmation }
+      : {}),
+    ...(typeof value.rateLimited === 'boolean' ? { rateLimited: value.rateLimited } : {}),
+    ...(typeof value.error === 'string' ? { error: value.error } : {}),
+  }
+}
+
+const privateServerMemberFromResponse = (value: unknown): PrivateServerMember => {
+  if (!isRecord(value)
+    || typeof value.rank !== 'number'
+    || typeof value.playerId !== 'string'
+    || typeof value.playerName !== 'string'
+    || typeof value.garageName !== 'string'
+    || typeof value.cash !== 'number'
+    || typeof value.fleetValue !== 'number'
+    || typeof value.totalValue !== 'number'
+    || typeof value.vehicleCount !== 'number'
+    || typeof value.isCurrentPlayer !== 'boolean') {
+    throw new SupabaseRequestError('Supabase a renvoyé un membre invalide.', 502)
+  }
+  return {
+    rank: value.rank,
+    playerId: value.playerId,
+    playerName: value.playerName,
+    garageName: value.garageName,
+    cash: value.cash,
+    fleetValue: value.fleetValue,
+    totalValue: value.totalValue,
+    vehicleCount: value.vehicleCount,
+    isCurrentPlayer: value.isCurrentPlayer,
+  }
+}
+
 const identityWithRecoveryFromResponse = (value: unknown): PlayerIdentityWithRecovery => {
   if (!isPlayerIdentity(value)) {
     throw new SupabaseRequestError('Supabase a renvoyé une identité invalide.', 502)
@@ -303,6 +400,132 @@ export const recoverPlayer = async (
     )
   }
   return identityWithRecoveryFromResponse(response)
+}
+
+export const fetchCurrentPrivateServer = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+): Promise<PrivateServerSummary | null> => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/get_current_private_server',
+    { method: 'POST', body: '{}' },
+    session.accessToken,
+  )
+  if (!isRecord(response) || !('server' in response)) {
+    throw new SupabaseRequestError('Supabase a renvoyé une appartenance invalide.', 502)
+  }
+  return response.server == null ? null : privateServerFromResponse(response.server)
+}
+
+export const createPrivateServer = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+  name: string,
+  replaceCurrent = false,
+) => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/create_private_server',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        p_name: name.trim(),
+        p_replace_current: replaceCurrent,
+      }),
+    },
+    session.accessToken,
+  )
+  return privateServerMutationFromResponse(response)
+}
+
+export const joinPrivateServer = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+  inviteCode: string,
+  replaceCurrent = false,
+) => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/join_private_server',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        p_invite_code: inviteCode,
+        p_replace_current: replaceCurrent,
+      }),
+    },
+    session.accessToken,
+  )
+  return privateServerMutationFromResponse(response)
+}
+
+export const rotatePrivateServerInvite = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+) => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/rotate_private_server_invite',
+    { method: 'POST', body: '{}' },
+    session.accessToken,
+  )
+  if (typeof response !== 'string') {
+    throw new SupabaseRequestError('Supabase n’a pas généré de code d’invitation.', 502)
+  }
+  return response
+}
+
+export const leavePrivateServer = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+) => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/leave_private_server',
+    { method: 'POST', body: '{}' },
+    session.accessToken,
+  )
+  const result = privateServerMutationFromResponse(response)
+  if (!result.ok) {
+    throw new SupabaseRequestError(result.error ?? 'Impossible de quitter ce serveur.', 400)
+  }
+}
+
+export const closePrivateServer = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+  serverId: string,
+) => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/close_private_server',
+    { method: 'POST', body: JSON.stringify({ p_server_id: serverId }) },
+    session.accessToken,
+  )
+  const result = privateServerMutationFromResponse(response)
+  if (!result.ok) {
+    throw new SupabaseRequestError(result.error ?? 'Impossible de fermer ce serveur.', 400)
+  }
+}
+
+export const fetchPrivateServerLeaderboard = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+): Promise<PrivateServerLeaderboard> => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/get_private_server_leaderboard',
+    { method: 'POST', body: '{}' },
+    session.accessToken,
+  )
+  if (!isRecord(response) || !Array.isArray(response.members)) {
+    throw new SupabaseRequestError('Supabase a renvoyé un classement invalide.', 502)
+  }
+  return {
+    server: privateServerFromResponse(response.server),
+    members: response.members.map(privateServerMemberFromResponse),
+  }
 }
 
 export const refreshAuthSession = async (

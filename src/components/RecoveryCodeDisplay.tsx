@@ -19,17 +19,14 @@ export const RecoveryCodeDisplay = ({ code, compact = false }: RecoveryCodeDispl
   }
 
   return (
-    <div className={`border-2 border-ink border-t-[0.5rem] border-t-signal bg-ink text-white ${compact ? 'p-5 sm:p-6' : 'p-6 sm:p-8'}`}>
-      <div className="flex items-center justify-between gap-4 border-b border-white/20 pb-3">
-        <p className="font-display text-sm font-bold uppercase tracking-[0.12em] text-white/50">Clé de récupération</p>
-        <span className="font-mono text-xs text-white/40">GG / PRIVÉ</span>
-      </div>
+    <div className={`rounded-[1.5rem] bg-paper/75 text-ink shadow-inset ${compact ? 'p-5 sm:p-6' : 'p-6 sm:p-7'}`}>
+      <p className="text-sm font-semibold text-muted">Code de récupération</p>
       <output className={`mt-5 block break-words font-mono font-bold leading-relaxed tracking-[0.035em] ${compact ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'}`}>
         {code}
       </output>
       <button
         type="button"
-        className="mt-5 min-h-11 border-b-2 border-signal text-sm font-bold text-white transition-colors hover:border-white"
+        className="text-action mt-4 -ml-3"
         onClick={() => void copy()}
       >
         {copied ? 'Code copié' : 'Copier le code'}

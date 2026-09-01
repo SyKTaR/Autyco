@@ -65,36 +65,22 @@ export const AuthScreen = () => {
   }
 
   return (
-    <main className="grid min-h-dvh bg-paper text-ink lg:grid-cols-[minmax(22rem,0.9fr)_minmax(34rem,1.1fr)]">
-      <section className="flex min-h-[22rem] flex-col justify-between border-b-4 border-signal bg-ink px-5 py-6 text-white sm:px-9 sm:py-8 lg:min-h-dvh lg:border-b-0 lg:border-r-4 lg:px-12 lg:py-10 xl:px-16">
-        <div className="flex items-center justify-between border-b border-white/20 pb-4">
-          <p className="font-display text-sm font-bold uppercase tracking-[0.12em] text-signal">AUTYCO · 01</p>
-          <span className="font-mono text-xs text-white/40">PLAYER ACCESS</span>
+    <main className="flex min-h-dvh items-center justify-center bg-paper px-4 py-8 text-ink sm:px-6">
+      <section className="w-full max-w-[34rem]">
+        <div className="mb-6 flex items-center justify-center gap-3 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-signal-soft text-signal shadow-inset" aria-hidden="true">
+            <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 13.5 6 7h12l3 6.5M5 18h14M6.5 18v2m11-2v2M4 13.5h16V18H4z" />
+            </svg>
+          </span>
+          <p className="font-display text-2xl font-semibold tracking-[-0.035em]">AUTYCO</p>
         </div>
 
-        <div className="py-10 lg:py-16">
-          <p className="font-display text-sm font-bold uppercase tracking-[0.12em] text-white/45">Ton atelier commence ici</p>
-          <h1 className="mt-5 max-w-[9ch] font-display text-[clamp(3.5rem,7.5vw,7rem)] font-extrabold uppercase leading-[0.82] tracking-[-0.045em]">
-            Trouve. Prépare. Revends.
-          </h1>
-          <p className="mt-7 max-w-[38ch] border-l-4 border-signal pl-5 text-base leading-7 text-white/65">
-            Monte ton parc véhicule affaire après affaire. Pas d’email, pas de mot de passe : deux noms suffisent pour prendre les clés.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-3 border-2 border-white/20 text-center font-mono text-xs text-white/50">
-          <span className="border-r border-white/20 px-2 py-3">ACHAT</span>
-          <span className="border-r border-white/20 px-2 py-3">ATELIER</span>
-          <span className="px-2 py-3">VENTE</span>
-        </div>
-      </section>
-
-      <section className="flex items-center px-4 py-8 sm:px-9 sm:py-10 lg:px-14 xl:px-20">
-        <div className="mx-auto w-full max-w-[38rem] border-2 border-ink bg-surface shadow-[6px_6px_0_#11110f]">
-          <div className="grid grid-cols-2 border-b-2 border-ink" aria-label="Choix du parcours">
+        <div className="panel overflow-hidden">
+          <div className="m-2 grid grid-cols-2 rounded-full bg-paper/75 p-1" aria-label="Choix du parcours">
             <button
               type="button"
-              className={`min-h-14 border-r border-ink px-3 font-display text-sm font-bold uppercase tracking-[0.055em] transition-colors ${mode === 'create' ? 'bg-signal text-white' : 'bg-paper text-muted hover:bg-signal-soft hover:text-ink'}`}
+              className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'create' ? 'bg-drive text-paper shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
               aria-pressed={mode === 'create'}
               onClick={() => changeMode('create')}
             >
@@ -102,7 +88,7 @@ export const AuthScreen = () => {
             </button>
             <button
               type="button"
-              className={`min-h-14 border-l border-ink px-3 font-display text-sm font-bold uppercase tracking-[0.055em] transition-colors ${mode === 'restore' ? 'bg-signal text-white' : 'bg-paper text-muted hover:bg-signal-soft hover:text-ink'}`}
+              className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'restore' ? 'bg-drive text-paper shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
               aria-pressed={mode === 'restore'}
               onClick={() => changeMode('restore')}
             >
@@ -110,18 +96,12 @@ export const AuthScreen = () => {
             </button>
           </div>
 
-          <div className="p-5 sm:p-8">
-            <p className="eyebrow">{mode === 'create' ? 'Ouvrir l’atelier' : 'Changer d’appareil'}</p>
-            <h2 className="mt-3 max-w-[12ch] font-display text-4xl font-extrabold uppercase leading-[0.92] tracking-[-0.03em] sm:text-5xl">
-              {mode === 'create' ? 'Comment on t’appelle ?' : 'Retrouve ta partie.'}
-            </h2>
-            <p className="mt-4 max-w-[48ch] text-base leading-7 text-muted">
-              {mode === 'create'
-                ? 'Ces deux noms restent privés pour le moment. Tu entreras dans le jeu après avoir noté ton code.'
-                : 'La restauration déplace la sauvegarde vers cet appareil et renouvelle automatiquement le code secret.'}
-            </p>
+          <div className="p-5 pt-6 sm:p-8 sm:pt-7">
+            <h1 className="font-display text-3xl font-semibold leading-tight tracking-[-0.035em] sm:text-4xl">
+              {mode === 'create' ? 'Crée ton garage' : 'Retrouve ta partie'}
+            </h1>
 
-            <form className="mt-8 space-y-5" onSubmit={submit} noValidate>
+            <form className="mt-7 space-y-5" onSubmit={submit} noValidate>
               {mode === 'create' ? (
                 <>
                   <label className="block">
@@ -175,7 +155,7 @@ export const AuthScreen = () => {
               )}
 
               {(error || notice) && (
-                <p className={`border-2 border-l-[0.5rem] px-4 py-3 text-sm font-semibold leading-6 ${error ? 'border-warning bg-[#fff0d6]' : 'border-signal bg-signal-soft'}`} role="status" aria-live="polite">
+                <p className={`rounded-2xl px-4 py-3 text-sm font-semibold leading-6 ${error ? 'bg-warning/10 text-warning' : 'bg-signal-soft text-signal-hover'}`} role="status" aria-live="polite">
                   {error ?? notice}
                 </p>
               )}
@@ -187,18 +167,18 @@ export const AuthScreen = () => {
               </button>
             </form>
 
-            <div className="mt-8 border-t-2 border-ink pt-5">
+            <div className="mt-6 border-t border-line pt-5 text-center">
               <button
                 type="button"
-                className="min-h-11 border-b-2 border-muted text-sm font-bold text-muted transition-colors hover:border-ink hover:text-ink"
+                className="text-action text-muted hover:text-ink"
                 onClick={() => useLocalMode()}
               >
-                Continuer uniquement sur cet appareil
+                Continuer en mode local
               </button>
-              <p className="mt-2 text-sm leading-5 text-muted">Sans compte ni sauvegarde sur le serveur.</p>
             </div>
           </div>
         </div>
+        <p className="mt-5 text-center text-sm text-muted">Aucun email ni mot de passe requis.</p>
       </section>
     </main>
   )

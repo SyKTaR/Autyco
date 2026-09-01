@@ -10,20 +10,30 @@ import {
 } from 'react'
 import {
   SupabaseRequestError,
+  closePrivateServer,
+  createPrivateServer,
   createPlayerIdentity,
+  fetchCurrentPrivateServer,
   fetchPlayerIdentity,
+  fetchPrivateServerLeaderboard,
   fetchRemoteGame,
+  joinPrivateServer,
+  leavePrivateServer,
   loadStoredSession,
   loadSupabaseConfiguration,
   performRemoteGameAction,
   recoverPlayer,
   refreshAuthSession,
   rotatePlayerRecoveryCode,
+  rotatePrivateServerInvite,
   signInAnonymously,
   signOutSession,
   storeSession,
   type AuthSession,
   type PlayerIdentity,
+  type PrivateServerLeaderboard,
+  type PrivateServerMutation,
+  type PrivateServerSummary,
 } from './supabase'
 import type { GameAction, GameState } from '../types/game'
 
@@ -54,6 +64,13 @@ interface AuthContextValue {
   showEntry: () => void
   getRemoteGame: () => Promise<GameState>
   sendRemoteAction: (action: GameAction) => Promise<GameState>
+  getCurrentPrivateServer: () => Promise<PrivateServerSummary | null>
+  createPrivateServer: (name: string, replaceCurrent?: boolean) => Promise<PrivateServerMutation>
+  joinPrivateServer: (inviteCode: string, replaceCurrent?: boolean) => Promise<PrivateServerMutation>
+  rotatePrivateServerInvite: () => Promise<string>
+  leavePrivateServer: () => Promise<void>
+  closePrivateServer: (serverId: string) => Promise<void>
+  getPrivateServerLeaderboard: () => Promise<PrivateServerLeaderboard>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -287,6 +304,55 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     )
   }, [configuration, runAuthenticated])
 
+  const getCurrentPrivateServer = useCallback(() => {
+    if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
+    return runAuthenticated((validSession) =>
+      fetchCurrentPrivateServer(configuration, validSession)
+    )
+  }, [configuration, runAuthenticated])
+
+  const createServer = useCallback((name: string, replaceCurrent = false) => {
+    if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
+    return runAuthenticated((validSession) =>
+      createPrivateServer(configuration, validSession, name, replaceCurrent)
+    )
+  }, [configuration, runAuthenticated])
+
+  const joinServer = useCallback((inviteCode: string, replaceCurrent = false) => {
+    if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
+    return runAuthenticated((validSession) =>
+      joinPrivateServer(configuration, validSession, inviteCode, replaceCurrent)
+    )
+  }, [configuration, runAuthenticated])
+
+  const rotateServerInvite = useCallback(() => {
+    if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
+    return runAuthenticated((validSession) =>
+      rotatePrivateServerInvite(configuration, validSession)
+    )
+  }, [configuration, runAuthenticated])
+
+  const leaveServer = useCallback(() => {
+    if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
+    return runAuthenticated((validSession) =>
+      leavePrivateServer(configuration, validSession)
+    )
+  }, [configuration, runAuthenticated])
+
+  const closeServer = useCallback((serverId: string) => {
+    if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
+    return runAuthenticated((validSession) =>
+      closePrivateServer(configuration, validSession, serverId)
+    )
+  }, [configuration, runAuthenticated])
+
+  const getServerLeaderboard = useCallback(() => {
+    if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
+    return runAuthenticated((validSession) =>
+      fetchPrivateServerLeaderboard(configuration, validSession)
+    )
+  }, [configuration, runAuthenticated])
+
   const value = useMemo<AuthContextValue>(() => ({
     status,
     configured: Boolean(configuration),
@@ -305,10 +371,19 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     showEntry,
     getRemoteGame,
     sendRemoteAction,
+    getCurrentPrivateServer,
+    createPrivateServer: createServer,
+    joinPrivateServer: joinServer,
+    rotatePrivateServerInvite: rotateServerInvite,
+    leavePrivateServer: leaveServer,
+    closePrivateServer: closeServer,
+    getPrivateServerLeaderboard: getServerLeaderboard,
   }), [
     status, configuration, session, identity, recoveryCode, setupKind, notice,
     createPlayer, restorePlayer, completeSetup, getRecoveryCode, rotateRecoveryCode,
     signOut, useLocalMode, showEntry, getRemoteGame, sendRemoteAction,
+    getCurrentPrivateServer, createServer, joinServer, rotateServerInvite,
+    leaveServer, closeServer, getServerLeaderboard,
   ])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

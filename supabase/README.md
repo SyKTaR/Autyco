@@ -59,8 +59,9 @@ constitue pas, à elle seule, une limitation globale par adresse IP.
 
 1. Créer un projet Supabase gratuit dans une région proche des joueurs.
 2. Laisser le schéma `private` hors de **Project Settings → API → Exposed schemas**.
-3. Appliquer les migrations dans l'ordre (`202609010001_backend_foundation.sql`, puis
-   `202609010002_anonymous_player_identity.sql`) avec le SQL Editor, ou installer la CLI Supabase
+3. Appliquer les migrations dans l'ordre (`202609010001_backend_foundation.sql`,
+   `202609010002_anonymous_player_identity.sql`, `202609010003_fix_pgcrypto_search_path.sql`, puis
+   `202609010004_private_servers.sql`) avec le SQL Editor, ou installer la CLI Supabase
    puis exécuter `supabase link --project-ref <PROJECT_REF>` et `supabase db push`.
 4. Dans **Authentication → Providers → Anonymous Sign-Ins**, activer les connexions anonymes. Le
    provider Email n'est pas utilisé par Garage Game.
@@ -82,3 +83,19 @@ délibéré : il supprime toutes les données Garage Game créées par cette mig
 
 Le parcours réel inscription → achat → déconnexion → reconnexion exige un projet Supabase et ne peut
 pas être simulé uniquement avec le bundle front.
+
+## Serveurs privés et classement
+
+La migration `202609010004_private_servers.sql` ajoute des groupes non découvrables par code. La
+clé primaire de `private_server_memberships.player_id` limite chaque joueur à un serveur actif. Les
+codes d’invitation possèdent 128 bits d’entropie et seul leur SHA-256 est stocké ; si le clair n’est
+plus en mémoire, l’écran Compétition en émet un nouveau et invalide le précédent.
+
+Les policies RLS donnent accès uniquement au serveur et aux appartenances partageant le serveur du
+joueur courant. Les tables `players` et `owned_vehicles` restent self-only : la seule ouverture vers
+les statistiques d’un autre membre est `get_private_server_leaderboard()`, qui vérifie
+l’appartenance côté serveur et renvoie une projection en lecture seule. La valeur du parc réutilise
+`private.vehicle_resale_value`, source de vérité existante du moteur économique.
+
+`tests/private_server_security.test.sql` décrit et contrôle la matrice A/B sur un serveur, C sur un
+autre et D sans serveur. Il doit être exécuté sur une base Supabase locale avant toute mise en ligne.

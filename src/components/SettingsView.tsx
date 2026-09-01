@@ -43,7 +43,7 @@ export const SettingsView = () => {
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[82rem] px-4 pb-28 pt-10 outline-none sm:px-6 sm:pt-14 md:pb-16 lg:px-8">
-      <header className="grid gap-6 border-b-2 border-ink pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
+      <header className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>
           <p className="eyebrow">Configuration du garage</p>
           <h1 className="page-title">Réglages</h1>
@@ -51,37 +51,37 @@ export const SettingsView = () => {
             Personnalise la signature visuelle de ton atelier et garde la main sur ta sauvegarde.
           </p>
         </div>
-        <p className="border-l-4 border-signal pl-4 font-display text-sm font-bold uppercase tracking-[0.08em] text-muted">
-          Accent actif<br /><span className="text-lg text-ink">{selectedAccent?.label}</span>
+        <p className="rounded-2xl bg-signal-soft px-4 py-3 text-sm text-muted shadow-inset">
+          Accent actif<br /><span className="mt-0.5 inline-block text-base font-semibold text-signal-hover">{selectedAccent?.label}</span>
         </p>
       </header>
 
-      <section className="mt-8 border-2 border-ink bg-surface" aria-labelledby="appearance-title">
-        <div className="grid gap-5 border-b-2 border-ink bg-ink p-5 text-white sm:grid-cols-[1fr_auto] sm:items-end sm:p-6">
+      <section className="panel mt-8 overflow-hidden" aria-labelledby="appearance-title">
+        <div className="grid gap-3 p-5 sm:grid-cols-[1fr_auto] sm:items-end sm:p-6">
           <div>
-            <p className="font-display text-sm font-bold uppercase tracking-[0.1em] text-white/50">Livrée du garage</p>
-            <h2 id="appearance-title" className="mt-1 font-display text-3xl font-extrabold uppercase tracking-[-0.025em]">
+            <p className="text-sm font-semibold text-signal-hover">Livrée du garage</p>
+            <h2 id="appearance-title" className="mt-1 font-display text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
               Couleur d’accent
             </h2>
           </div>
-          <p className="max-w-[42ch] text-sm leading-6 text-white/60">
-            Le choix s’applique aux actions et repères de progression, puis reste lié à ce garage sur cet appareil.
+          <p className="max-w-[42ch] text-sm leading-6 text-muted">
+            Utilisée pour les actions prioritaires, puis mémorisée sur cet appareil.
           </p>
         </div>
-        <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3" role="group" aria-label="Choisir la couleur d’accent">
+        <div className="grid gap-3 border-t border-line p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3" role="group" aria-label="Choisir la couleur d’accent">
           {accentPresets.map((preset) => {
             const selected = preset.id === accentId
             return (
               <button
                 key={preset.id}
                 type="button"
-                className={`flex min-h-14 items-center gap-3 border-2 p-3 text-left transition-[border-color,background-color,transform] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${selected ? 'border-ink bg-paper' : 'border-line bg-white hover:border-ink'}`}
+                className={`flex min-h-14 items-center gap-3 rounded-2xl p-3 text-left shadow-inset transition-[background-color,transform] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${selected ? 'bg-signal-soft' : 'bg-soft/70 hover:-translate-y-0.5 hover:bg-soft'}`}
                 aria-pressed={selected}
                 onClick={() => setAccentId(preset.id)}
               >
-                <span className="h-8 w-8 shrink-0 border-2 border-ink" style={{ backgroundColor: `rgb(${preset.accent})` }} aria-hidden="true" />
+                <span className="h-8 w-8 shrink-0 rounded-xl" style={{ backgroundColor: `rgb(${preset.accent})` }} aria-hidden="true" />
                 <span className="min-w-0 flex-1 font-semibold">{preset.label}</span>
-                <span className="font-display text-sm font-bold uppercase text-muted" aria-hidden="true">{selected ? 'Actif' : 'Choisir'}</span>
+                <span className={`text-sm font-semibold ${selected ? 'text-signal-hover' : 'text-muted'}`} aria-hidden="true">{selected ? 'Actif' : 'Choisir'}</span>
               </button>
             )
           })}
@@ -92,8 +92,8 @@ export const SettingsView = () => {
       <div className="mt-12 grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
         <section aria-labelledby="identity-title">
           <p className="eyebrow">Fiche joueur</p>
-          <h2 id="identity-title" className="mt-2 font-display text-3xl font-extrabold uppercase tracking-[-0.025em]">Identité</h2>
-          <dl className="mt-5 border-2 border-ink bg-surface">
+          <h2 id="identity-title" className="mt-2 font-display text-3xl font-semibold tracking-[-0.025em]">Identité</h2>
+          <dl className="panel mt-5 overflow-hidden shadow-inset">
             <div className="grid grid-cols-[7rem_1fr] gap-4 border-b border-line p-4 sm:grid-cols-[9rem_1fr] sm:p-5">
               <dt className="data-label">Garage</dt>
               <dd className="min-w-0 break-words font-bold">{auth.identity?.garageName ?? 'Garage local'}</dd>
@@ -106,7 +106,7 @@ export const SettingsView = () => {
 
           <button
             type="button"
-            className="mt-7 min-h-12 border-b-2 border-danger text-sm font-bold text-danger transition-colors hover:bg-[#ffe7e9]"
+            className="mt-7 inline-flex min-h-12 items-center rounded-full bg-danger/10 px-4 text-sm font-semibold text-danger transition-colors hover:bg-danger/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
             onClick={() => void auth.signOut()}
           >
             Retirer cette partie de l’appareil
@@ -118,7 +118,7 @@ export const SettingsView = () => {
 
         <section aria-labelledby="recovery-title">
           <p className="eyebrow">Clé de transfert</p>
-          <h2 id="recovery-title" className="mt-2 font-display text-3xl font-extrabold uppercase tracking-[-0.025em]">Code de récupération</h2>
+          <h2 id="recovery-title" className="mt-2 font-display text-3xl font-semibold tracking-[-0.025em]">Code de récupération</h2>
           <p className="mt-3 max-w-[54ch] text-sm leading-6 text-muted">
             Le code n’est jamais conservé en clair. Après un rechargement, en ouvrir un nouveau invalide automatiquement l’ancien.
           </p>
@@ -127,17 +127,17 @@ export const SettingsView = () => {
             {auth.recoveryCode ? (
               <RecoveryCodeDisplay code={auth.recoveryCode} compact />
             ) : (
-              <div className="flex min-h-44 items-center justify-center border-2 border-ink bg-soft p-6 text-center text-sm text-muted">
+              <div className="flex min-h-44 items-center justify-center rounded-[1.5rem] bg-soft p-6 text-center text-sm text-muted shadow-inset">
                 {loadingCode ? 'Génération sécurisée du code…' : 'Le code ne peut pas être affiché.'}
               </div>
             )}
           </div>
 
           {error && (
-            <p className="mt-4 border-2 border-warning bg-[#fff0d6] px-4 py-3 text-sm leading-6" role="alert" aria-live="assertive">{error}</p>
+            <p className="mt-4 rounded-2xl bg-warning/10 px-4 py-3 text-sm leading-6 text-warning" role="alert" aria-live="assertive">{error}</p>
           )}
 
-          <div className="mt-6 border-t-2 border-ink pt-6">
+          <div className="mt-6 border-t border-line pt-6">
             {confirmRotation ? (
               <div>
                 <p className="text-sm font-bold">L’ancien code cessera immédiatement de fonctionner.</p>

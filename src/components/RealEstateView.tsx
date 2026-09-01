@@ -27,8 +27,16 @@ const statusTone: Record<PropertyStatus, StatusTone> = {
   operational: 'success',
 }
 
+const PropertyAvatar = () => (
+  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-soft text-drive shadow-inset" aria-hidden="true">
+    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20V8l8-4 8 4v12M8 20v-7h8v7M8 9h.01M16 9h.01" />
+    </svg>
+  </span>
+)
+
 const PropertyFacts = ({ property }: { property: PropertyOffer }) => (
-  <dl className="grid grid-cols-2 gap-x-4 gap-y-4 border border-line bg-paper p-4">
+  <dl className="subtle-card grid grid-cols-2 gap-x-4 gap-y-4 p-4">
     <div>
       <dt className="data-label">Capacité</dt>
       <dd className="mt-1 font-mono text-lg font-semibold">+{property.capacity} places</dd>
@@ -69,18 +77,21 @@ const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: nu
     <InventoryCard className="overflow-hidden shadow-card">
       <div className="p-4 sm:p-6">
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-muted">
-              {property.district} · {modeLabel[property.acquisitionMode]}
-            </p>
-            <h3 className="mt-1 font-display text-2xl font-semibold leading-tight tracking-[-0.035em]">
-              {property.name}
-            </h3>
+          <div className="flex min-w-0 gap-3">
+            <PropertyAvatar />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-muted">
+                {property.district} · {modeLabel[property.acquisitionMode]}
+              </p>
+              <h3 className="mt-1 font-display text-2xl font-semibold leading-tight tracking-[-0.035em]">
+                {property.name}
+              </h3>
+            </div>
           </div>
           <StatusBadge tone={statusTone[property.status]} className="shrink-0">{statusLabel[property.status]}</StatusBadge>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-4 border border-line bg-paper p-4 sm:grid-cols-3">
+        <div className="subtle-card mt-5 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3">
           <div>
             <p className="data-label">Places</p>
             <p className="mt-1 font-mono text-base font-semibold">+{property.capacity}</p>
@@ -127,7 +138,7 @@ const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: nu
       )}
 
       {property.status === 'renovating' && property.workCompletesAt && (
-        <div className="border-t-2 border-ink bg-signal-soft p-4 text-ink sm:p-6">
+        <div className="bg-signal-soft p-4 text-ink sm:p-6">
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-sm font-semibold">Remise aux normes en cours</p>
@@ -137,9 +148,9 @@ const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: nu
               {formatRemaining(property.workCompletesAt, now)}
             </p>
           </div>
-          <div className="mt-4 h-2 border border-ink bg-white" aria-hidden="true">
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-paper/60" aria-hidden="true">
             <div
-              className="h-full bg-signal transition-[width] duration-700"
+              className="h-full rounded-full bg-signal transition-[width] duration-700"
               style={{ width: `${workProgress}%` }}
             />
           </div>
@@ -147,7 +158,7 @@ const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: nu
       )}
 
       {property.status === 'operational' && (
-        <div className="border-t-2 border-ink bg-[#e3f4ec] px-4 py-3 text-sm font-semibold leading-5 text-success sm:px-6">
+        <div className="bg-success/10 px-4 py-3 text-sm font-semibold leading-5 text-success sm:px-6">
           Les {property.capacity} places sont intégrées à la capacité partagée.
         </div>
       )}
@@ -160,14 +171,17 @@ const MarketPropertyCard = ({ offer, acquired }: { offer: PropertyOffer; acquire
   const canAcquire = !acquired && state.cash >= offer.acquisitionCost
 
   return (
-    <InventoryCard className="flex h-full flex-col overflow-hidden shadow-card transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[4px_4px_0_rgb(var(--accent))]">
+    <InventoryCard className="flex h-full flex-col overflow-hidden transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-raised">
       <div className="flex-1 p-4 sm:p-6">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="eyebrow">{offer.district}</p>
-            <h3 className="mt-2 font-display text-[1.7rem] font-semibold leading-tight tracking-[-0.04em]">
-              {offer.name}
-            </h3>
+          <div className="flex min-w-0 gap-3">
+            <PropertyAvatar />
+            <div>
+              <p className="text-sm font-semibold text-signal-hover">{offer.district}</p>
+              <h3 className="mt-1 font-display text-[1.7rem] font-semibold leading-tight tracking-[-0.04em]">
+                {offer.name}
+              </h3>
+            </div>
           </div>
           <StatusBadge>{modeLabel[offer.acquisitionMode]}</StatusBadge>
         </div>
@@ -182,7 +196,7 @@ const MarketPropertyCard = ({ offer, acquired }: { offer: PropertyOffer; acquire
           </p>
         )}
       </div>
-      <div className="border-t border-line bg-soft p-4 sm:p-6">
+      <div className="bg-soft/70 p-4 sm:p-6">
         <button
           type="button"
           className="button-primary w-full"
@@ -217,7 +231,7 @@ export const RealEstateView = () => {
             toutes les 24 heures, même pendant ton absence.
           </p>
         </div>
-        <dl className="grid grid-cols-3 overflow-hidden border-2 border-ink bg-surface">
+        <dl className="grid grid-cols-3 overflow-hidden rounded-2xl bg-surface shadow-card shadow-inset">
           <div className="min-w-0 border-r border-line px-3 py-3 sm:px-5 sm:py-4">
             <dt className="text-sm font-medium text-muted">Capacité</dt>
             <dd className="mt-1 font-mono text-lg font-semibold">
@@ -242,7 +256,7 @@ export const RealEstateView = () => {
               <p className="eyebrow">Parc actuel</p>
               <h2
                 id="owned-properties-title"
-              className="mt-1 font-display text-3xl font-extrabold uppercase tracking-[-0.025em]"
+              className="mt-1 font-display text-3xl font-semibold tracking-[-0.025em]"
               >
                 Tes locaux
               </h2>
@@ -264,7 +278,7 @@ export const RealEstateView = () => {
           <p className="eyebrow">Opportunités fixes</p>
           <h2
             id="property-market-title"
-            className="mt-1 font-display text-3xl font-extrabold uppercase tracking-[-0.025em]"
+            className="mt-1 font-display text-3xl font-semibold tracking-[-0.025em]"
           >
             Marché immobilier
           </h2>

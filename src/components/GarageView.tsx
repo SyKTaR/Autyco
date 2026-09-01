@@ -18,6 +18,7 @@ import {
 import type { OwnedVehicle, VehicleStatus } from '../types/game'
 import { StatusBadge, type StatusTone } from './ui/StatusBadge'
 import { InventoryCard } from './ui/InventoryCard'
+import { VehicleAvatar } from './ui/VehicleAvatar'
 
 interface GarageViewProps {
   onOpenMarket: () => void
@@ -41,16 +42,16 @@ const getStage = (status: VehicleStatus) => {
 const VehicleProgress = ({ status }: { status: VehicleStatus }) => {
   const currentStage = getStage(status)
   return (
-    <ol className="grid grid-cols-3 border-y-2 border-ink bg-paper px-4" aria-label="Progression du véhicule">
+    <ol className="grid grid-cols-3 gap-1 bg-paper/55 p-2" aria-label="Progression du véhicule">
       {['Diagnostic', 'Préparation', 'Vente'].map((label, index) => (
         <li
           key={label}
-          className={`relative border-t-4 px-1 py-3 text-center font-display text-sm font-bold uppercase tracking-[0.035em] ${
+          className={`rounded-xl px-1 py-2.5 text-center text-sm font-semibold ${
             index === currentStage
-              ? 'border-signal text-signal'
+              ? 'bg-drive-soft text-drive'
               : index < currentStage
-                ? 'border-ink text-ink'
-                : 'border-transparent text-muted'
+                ? 'bg-soft text-ink'
+                : 'text-muted'
           }`}
         >
           <span className="mr-1 font-mono" aria-hidden="true">
@@ -64,7 +65,7 @@ const VehicleProgress = ({ status }: { status: VehicleStatus }) => {
 }
 
 const VehicleFacts = ({ vehicle }: { vehicle: OwnedVehicle }) => (
-  <dl className="grid grid-cols-2 gap-x-5 gap-y-4 border border-line bg-paper p-4 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+  <dl className="subtle-card grid grid-cols-2 gap-x-5 gap-y-4 p-4 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
     <div>
       <dt className="data-label">Achat</dt>
       <dd className="mt-1 font-mono text-base font-semibold">{formatMoney(vehicle.purchasePrice)}</dd>
@@ -87,7 +88,7 @@ const VehicleFacts = ({ vehicle }: { vehicle: OwnedVehicle }) => (
 )
 
 const ProblemList = ({ vehicle }: { vehicle: OwnedVehicle }) => (
-  <div className="divide-y divide-line border border-ink bg-surface px-4">
+  <div className="divide-y divide-line rounded-2xl bg-paper/55 px-4 shadow-inset">
     {vehicle.problems.map((problem) => (
       <div key={problem.id} className="grid grid-cols-[1fr_auto] gap-4 py-3.5">
         <div>
@@ -119,7 +120,7 @@ const SaleForm = ({ vehicle }: { vehicle: OwnedVehicle }) => {
   }, [fairValue, vehicle.id])
 
   return (
-    <div className="border-t border-line bg-soft p-4 sm:p-6">
+    <div className="bg-soft/70 p-4 sm:p-6">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <p className="text-base font-semibold text-ink">Fixe ton prix de vente</p>
@@ -198,7 +199,7 @@ const ContextualAction = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number
     const repairCost = getRepairCost(vehicle)
     const canRepair = state.cash >= repairCost
     return (
-      <div className="border-t border-line bg-soft p-4 sm:p-6">
+      <div className="bg-soft/70 p-4 sm:p-6">
         <ProblemList vehicle={vehicle} />
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button
@@ -231,7 +232,7 @@ const ContextualAction = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number
     const total = vehicle.repairCompletesAt - vehicle.repairStartedAt
     const progress = Math.min(100, Math.max(0, ((now - vehicle.repairStartedAt) / total) * 100))
     return (
-      <div className="border-t-2 border-ink bg-signal-soft p-4 text-ink sm:p-6">
+      <div className="bg-signal-soft p-4 text-ink sm:p-6">
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-sm font-semibold">Intervention en cours</p>
@@ -241,8 +242,8 @@ const ContextualAction = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number
             {formatRemaining(vehicle.repairCompletesAt, now)}
           </p>
         </div>
-        <div className="mt-4 h-2 border border-ink bg-white" aria-hidden="true">
-          <div className="h-full bg-signal transition-[width] duration-700" style={{ width: `${progress}%` }} />
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-paper/60" aria-hidden="true">
+          <div className="h-full rounded-full bg-signal transition-[width] duration-700" style={{ width: `${progress}%` }} />
         </div>
       </div>
     )
@@ -288,7 +289,7 @@ const ContextualAction = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number
     const offer = vehicle.offerAmount ?? 0
     const margin = offer - getVehicleInvestment(vehicle)
     return (
-      <div className="border-t-2 border-ink bg-[#e3f4ec] p-4 sm:p-6">
+      <div className="bg-success/10 p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="data-label text-success">Offre ferme reçue</p>
@@ -329,19 +330,22 @@ const VehicleCard = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number }) =
   const { dispatch } = useGame()
 
   return (
-    <InventoryCard className={`overflow-hidden ${vehicle.kept ? 'shadow-[4px_4px_0_rgb(var(--accent))]' : 'shadow-card'}`}>
+    <InventoryCard className={`overflow-hidden ${vehicle.kept ? 'ring-1 ring-signal/40 shadow-raised' : ''}`}>
       <div className="p-4 sm:p-6">
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-muted">
-              {vehicle.maker} · {vehicle.segment}
-            </p>
-            <h2 className="mt-1 font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.035em] sm:text-3xl">
-              {vehicle.model}
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              {vehicle.year} · {riskLabel[vehicle.risk]}
-            </p>
+          <div className="flex min-w-0 gap-3 sm:gap-4">
+            <VehicleAvatar />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-muted">
+                {vehicle.maker} · {vehicle.segment}
+              </p>
+              <h2 className="mt-1 font-display text-[1.65rem] font-semibold leading-tight tracking-[-0.035em] sm:text-3xl">
+                {vehicle.model}
+              </h2>
+              <p className="mt-2 text-sm text-muted">
+                {vehicle.year} · {riskLabel[vehicle.risk]}
+              </p>
+            </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
             {vehicle.kept && <StatusBadge tone="inverse">Collection</StatusBadge>}
@@ -353,7 +357,7 @@ const VehicleCard = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number }) =
         </div>
         <button
           type="button"
-          className="mt-3 inline-flex min-h-11 items-center border-b-2 border-signal px-1 text-sm font-bold text-signal-hover transition-colors hover:border-ink hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          className="text-action mt-3 -ml-3"
           onClick={() => dispatch({ type: 'TOGGLE_VEHICLE_KEPT', vehicleId: vehicle.id })}
         >
           {vehicle.kept ? 'Retirer de la collection' : 'Garder dans la collection'}
@@ -394,8 +398,8 @@ export const GarageView = ({ onOpenMarket }: GarageViewProps) => {
       {state.vehicles.length === 0 ? (
         <section className="panel grid min-h-[22rem] place-items-center bg-surface px-5 py-12 text-center shadow-card">
           <div className="max-w-md">
-            <p className="font-display text-sm font-bold uppercase tracking-[0.08em] text-signal-hover">{capacity} places libres</p>
-            <h2 className="mt-3 font-display text-4xl font-extrabold uppercase leading-none tracking-[-0.035em] sm:text-5xl">
+            <p className="text-sm font-semibold text-signal-hover">{capacity} places libres</p>
+            <h2 className="mt-3 font-display text-4xl font-semibold leading-tight tracking-[-0.035em] sm:text-5xl">
               La première affaire t’attend.
             </h2>
             <p className="mx-auto mt-3 max-w-[38ch] text-base leading-6 text-muted">
@@ -414,13 +418,13 @@ export const GarageView = ({ onOpenMarket }: GarageViewProps) => {
           {freeSlots > 0 && (
             <button
               type="button"
-              className="group min-h-[9rem] border-2 border-dashed border-control bg-transparent p-5 text-left transition-colors hover:border-signal hover:bg-signal-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+              className="group min-h-[9rem] rounded-[1.75rem] border border-dashed border-control bg-transparent p-5 text-left transition-[border-color,background-color] hover:border-signal hover:bg-signal-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
               onClick={onOpenMarket}
             >
               <span className="text-sm font-medium text-muted">
                 {freeSlots} place{freeSlots > 1 ? 's' : ''} disponible{freeSlots > 1 ? 's' : ''}
               </span>
-              <span className="mt-3 block font-display text-3xl font-extrabold uppercase leading-none tracking-[-0.03em] text-ink group-hover:text-signal-hover">
+              <span className="mt-3 block font-display text-3xl font-semibold leading-tight tracking-[-0.03em] text-ink group-hover:text-signal-hover">
                 Trouver une affaire →
               </span>
             </button>

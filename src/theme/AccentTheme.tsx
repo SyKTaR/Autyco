@@ -10,12 +10,12 @@ import {
 import { useAuth } from '../backend/AuthContext'
 
 export const accentPresets = [
-  { id: 'orange', label: 'Orange atelier', accent: '255 132 74', strong: '255 164 112', soft: '54 31 24' },
-  { id: 'blue', label: 'Bleu course', accent: '103 163 255', strong: '142 187 255', soft: '22 38 64' },
-  { id: 'green', label: 'Vert paddock', accent: '71 200 145', strong: '105 220 169', soft: '20 48 39' },
-  { id: 'violet', label: 'Violet nocturne', accent: '177 138 255', strong: '202 177 255', soft: '40 31 62' },
-  { id: 'red', label: 'Rouge carrosserie', accent: '255 113 134', strong: '255 151 166', soft: '61 27 37' },
-  { id: 'teal', label: 'Turquoise établi', accent: '70 205 200', strong: '108 225 220', soft: '18 50 50' },
+  { id: 'orange', label: 'Orange atelier', accent: '255 145 82', strong: '255 173 124', soft: '52 31 23' },
+  { id: 'blue', label: 'Bleu course', accent: '121 167 255', strong: '155 190 255', soft: '24 36 58' },
+  { id: 'green', label: 'Vert paddock', accent: '91 210 157', strong: '126 224 180', soft: '20 46 38' },
+  { id: 'violet', label: 'Violet nocturne', accent: '191 154 255', strong: '211 185 255', soft: '41 31 59' },
+  { id: 'red', label: 'Rouge carrosserie', accent: '255 132 151', strong: '255 165 178', soft: '58 27 36' },
+  { id: 'teal', label: 'Turquoise établi', accent: '85 211 205', strong: '125 225 220', soft: '19 47 47' },
 ] as const
 
 export type AccentId = (typeof accentPresets)[number]['id']
