@@ -42,7 +42,7 @@ const NavButton = ({
     onClick={onClick}
     className={`relative flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-0.5 py-1.5 text-sm font-semibold leading-none tracking-[-0.02em] transition-[background-color,color,transform] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal md:min-h-12 md:flex-none md:flex-row md:justify-start md:gap-2 md:rounded-full md:px-4 md:py-2 md:tracking-normal ${
       active
-        ? 'bg-drive text-paper shadow-card'
+        ? 'bg-drive text-on-drive shadow-card'
         : 'text-muted hover:bg-soft hover:text-ink'
     }`}
     aria-current={active ? 'page' : undefined}
@@ -55,7 +55,7 @@ const NavButton = ({
     <NavIcon view={target} />
     <span className="block max-w-full truncate md:hidden xl:block">{label}</span>
     {attentionCount > 0 && (
-      <span className="absolute right-1 top-1 min-w-5 rounded-full bg-signal px-1.5 py-1 font-mono text-[0.6875rem] font-bold leading-none text-paper md:-right-1 md:-top-1" aria-hidden="true">
+      <span className="absolute right-1 top-1 min-w-5 rounded-full bg-signal px-1.5 py-1 font-mono text-[0.6875rem] font-bold leading-none text-on-signal md:-right-1 md:-top-1" aria-hidden="true">
         {attentionCount > 9 ? '9+' : attentionCount}
       </span>
     )}

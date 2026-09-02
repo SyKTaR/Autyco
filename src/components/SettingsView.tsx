@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
 import { readableError, useAuth } from '../backend/AuthContext'
-import { accentPresets, useAccentTheme } from '../theme/AccentTheme'
+import { accentPresets, useAccentTheme, type ColorScheme } from '../theme/AccentTheme'
 import { RecoveryCodeDisplay } from './RecoveryCodeDisplay'
+
+const colorSchemes: Array<{ id: ColorScheme; label: string; description: string }> = [
+  { id: 'light', label: 'Clair', description: 'Atelier de jour' },
+  { id: 'dark', label: 'Sombre', description: 'Atelier nocturne' },
+]
 
 export const SettingsView = () => {
   const auth = useAuth()
-  const { accentId, setAccentId } = useAccentTheme()
+  const { accentId, setAccentId, colorScheme, setColorScheme } = useAccentTheme()
   const [loadingCode, setLoadingCode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmRotation, setConfirmRotation] = useState(false)
@@ -61,16 +66,50 @@ export const SettingsView = () => {
           <div>
             <p className="text-sm font-semibold text-signal-hover">Livrée du garage</p>
             <h2 id="appearance-title" className="mt-1 font-display text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
-              Couleur d’accent
+              Apparence
             </h2>
           </div>
           <p className="max-w-[42ch] text-sm leading-6 text-muted">
-            Utilisée pour les actions prioritaires, puis mémorisée sur cet appareil.
+            Le thème et l’accent sont mémorisés sur cet appareil.
           </p>
         </div>
-        <div className="grid gap-3 border-t border-line p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3" role="group" aria-label="Choisir la couleur d’accent">
+
+        <div className="grid gap-4 border-t border-line p-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,1fr)] sm:items-center sm:p-6">
+          <div>
+            <h3 id="theme-title" className="font-display text-xl font-semibold tracking-[-0.02em]">Ambiance</h3>
+            <p className="mt-1 max-w-[42ch] text-sm leading-6 text-muted">
+              Au premier lancement, AUTYCO suit la préférence de ton appareil.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 rounded-[1.25rem] bg-paper/65 p-1.5 shadow-inset" role="group" aria-labelledby="theme-title">
+            {colorSchemes.map((scheme) => {
+              const selected = scheme.id === colorScheme
+              return (
+                <button
+                  key={scheme.id}
+                  type="button"
+                  className={`min-h-14 rounded-2xl px-3 py-2 text-left transition-[background-color,color,box-shadow,transform] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${selected ? 'bg-surface text-ink shadow-card' : 'text-muted hover:bg-soft/70 hover:text-ink'}`}
+                  aria-pressed={selected}
+                  onClick={() => setColorScheme(scheme.id)}
+                >
+                  <span className="block font-semibold">{scheme.label}</span>
+                  <span className="mt-0.5 block text-sm leading-5 opacity-75">{scheme.description}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-line px-4 py-5 sm:px-6">
+          <h3 id="accent-title" className="font-display text-xl font-semibold tracking-[-0.02em]">Couleur d’accent</h3>
+          <p className="mt-1 max-w-[42ch] text-sm leading-6 text-muted">
+            Réservée aux actions prioritaires et aux repères de progression.
+          </p>
+        </div>
+        <div className="grid gap-3 border-t border-line p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3" role="group" aria-labelledby="accent-title">
           {accentPresets.map((preset) => {
             const selected = preset.id === accentId
+            const palette = preset[colorScheme]
             return (
               <button
                 key={preset.id}
@@ -79,14 +118,16 @@ export const SettingsView = () => {
                 aria-pressed={selected}
                 onClick={() => setAccentId(preset.id)}
               >
-                <span className="h-8 w-8 shrink-0 rounded-xl" style={{ backgroundColor: `rgb(${preset.accent})` }} aria-hidden="true" />
+                <span className="h-8 w-8 shrink-0 rounded-xl" style={{ backgroundColor: `rgb(${palette.accent})` }} aria-hidden="true" />
                 <span className="min-w-0 flex-1 font-semibold">{preset.label}</span>
                 <span className={`text-sm font-semibold ${selected ? 'text-signal-hover' : 'text-muted'}`} aria-hidden="true">{selected ? 'Actif' : 'Choisir'}</span>
               </button>
             )
           })}
         </div>
-        <p className="sr-only" role="status" aria-live="polite">Couleur active : {selectedAccent?.label}.</p>
+        <p className="sr-only" role="status" aria-live="polite">
+          Thème {colorScheme === 'light' ? 'clair' : 'sombre'}, couleur active : {selectedAccent?.label}.
+        </p>
       </section>
 
       <div className="mt-12 grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">

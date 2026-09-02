@@ -3,17 +3,62 @@
 @tailwind utilities;
 
 :root {
-  --accent: 255 132 74;
-  --accent-strong: 255 164 112;
-  --accent-soft: 54 31 24;
+  --accent: 255 145 82;
+  --accent-strong: 255 173 124;
+  --accent-soft: 52 31 23;
+  --on-accent: 8 10 14;
+  --ink: 246 248 251;
+  --paper: 8 10 14;
+  --surface: 18 22 28;
+  --soft: 27 33 42;
+  --line: 44 52 64;
+  --control: 127 137 151;
+  --muted: 174 183 196;
+  --drive: 121 167 255;
+  --drive-soft: 24 36 58;
+  --on-drive: 8 10 14;
+  --success: 115 224 170;
+  --success-soft: 24 54 43;
+  --warning: 255 209 138;
+  --warning-soft: 58 44 25;
+  --danger: 255 147 163;
+  --shadow-card: 0 16px 44px rgba(0, 0, 0, 0.24);
+  --shadow-raised: 0 28px 80px rgba(0, 0, 0, 0.46);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   color-scheme: dark;
   font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
-  color: #f6f8fb;
-  background: #080a0e;
+  color: rgb(var(--ink));
+  background: rgb(var(--paper));
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme="light"] {
+  --accent: 190 76 24;
+  --accent-strong: 150 54 12;
+  --accent-soft: 246 220 202;
+  --on-accent: 255 250 246;
+  --ink: 36 37 34;
+  --paper: 236 233 226;
+  --surface: 248 246 241;
+  --soft: 224 221 213;
+  --line: 199 195 185;
+  --control: 102 101 96;
+  --muted: 91 90 85;
+  --drive: 49 94 159;
+  --drive-soft: 218 228 242;
+  --on-drive: 250 248 243;
+  --success: 39 112 79;
+  --success-soft: 220 238 229;
+  --warning: 132 89 20;
+  --warning-soft: 243 231 207;
+  --danger: 168 63 81;
+  --shadow-card: 0 16px 44px rgba(48, 43, 34, 0.1);
+  --shadow-raised: 0 28px 80px rgba(48, 43, 34, 0.16);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  color-scheme: light;
 }
 
 * {
@@ -22,7 +67,7 @@
 
 html {
   min-width: 20rem;
-  background: #080a0e;
+  background: rgb(var(--paper));
   scroll-behavior: smooth;
   scroll-padding-bottom: calc(7.5rem + env(safe-area-inset-bottom));
 }
@@ -31,7 +76,7 @@ body {
   margin: 0;
   min-width: 20rem;
   min-height: 100vh;
-  background-color: #080a0e;
+  background-color: rgb(var(--paper));
   font-size: 1rem;
   line-height: 1.5;
 }
@@ -61,7 +106,7 @@ textarea:focus-visible {
 
 ::selection {
   background: rgb(var(--accent));
-  color: #080a0e;
+  color: rgb(var(--on-accent));
 }
 
 .font-mono {
@@ -91,7 +136,7 @@ textarea:focus-visible {
   }
 
   .button-primary {
-    @apply inline-flex min-h-12 items-center justify-center rounded-full bg-signal px-5 py-3 text-[0.9375rem] font-bold text-paper shadow-card transition-[background-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-signal-hover hover:shadow-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal active:translate-y-0 disabled:bg-soft disabled:text-control disabled:shadow-none disabled:hover:translate-y-0;
+    @apply inline-flex min-h-12 items-center justify-center rounded-full bg-signal px-5 py-3 text-[0.9375rem] font-bold text-on-signal shadow-card transition-[background-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-signal-hover hover:shadow-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal active:translate-y-0 disabled:bg-soft disabled:text-control disabled:shadow-none disabled:hover:translate-y-0;
   }
 
   .button-secondary {
@@ -161,8 +206,8 @@ textarea:focus-visible {
     align-items: flex-start;
     justify-content: center;
     padding: max(2rem, env(safe-area-inset-top)) 1rem max(2rem, env(safe-area-inset-bottom));
-    background: #080a0e;
-    color: #f6f8fb;
+    background: rgb(var(--paper));
+    color: rgb(var(--ink));
   }
 }
 

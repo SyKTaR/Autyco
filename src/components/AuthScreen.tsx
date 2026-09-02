@@ -80,7 +80,7 @@ export const AuthScreen = () => {
           <div className="m-2 grid grid-cols-2 rounded-full bg-paper/75 p-1" aria-label="Choix du parcours">
             <button
               type="button"
-              className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'create' ? 'bg-drive text-paper shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
+              className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'create' ? 'bg-drive text-on-drive shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
               aria-pressed={mode === 'create'}
               onClick={() => changeMode('create')}
             >
@@ -88,7 +88,7 @@ export const AuthScreen = () => {
             </button>
             <button
               type="button"
-              className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'restore' ? 'bg-drive text-paper shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
+              className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'restore' ? 'bg-drive text-on-drive shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
               aria-pressed={mode === 'restore'}
               onClick={() => changeMode('restore')}
             >

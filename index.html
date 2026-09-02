@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#080a0e" />
+    <script>
+      try {
+        const storedTheme = localStorage.getItem('garage-game-color-scheme-v1')
+        const theme = storedTheme === 'light' || storedTheme === 'dark'
+          ? storedTheme
+          : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+        document.documentElement.dataset.theme = theme
+        document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#ece9e2' : '#080a0e'
+      } catch {
+        document.documentElement.dataset.theme = 'dark'
+      }
+    </script>
     <meta
       name="description"
       content="AUTYCO — prototype de gestion automobile"
