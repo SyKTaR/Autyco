@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { readableError, useAuth } from '../backend/AuthContext'
 import { accentPresets, useAccentTheme, type ColorScheme } from '../theme/AccentTheme'
 import { RecoveryCodeDisplay } from './RecoveryCodeDisplay'
@@ -14,22 +14,6 @@ export const SettingsView = () => {
   const [loadingCode, setLoadingCode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmRotation, setConfirmRotation] = useState(false)
-
-  useEffect(() => {
-    if (auth.status !== 'authenticated' || auth.recoveryCode) return
-    let active = true
-    setLoadingCode(true)
-    auth.getRecoveryCode()
-      .catch((loadError) => {
-        if (active) setError(readableError(loadError))
-      })
-      .finally(() => {
-        if (active) setLoadingCode(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [auth.status, auth.recoveryCode, auth.getRecoveryCode])
 
   const rotate = async () => {
     setError(null)
@@ -161,15 +145,24 @@ export const SettingsView = () => {
           <p className="eyebrow">Clé de transfert</p>
           <h2 id="recovery-title" className="mt-2 font-display text-3xl font-semibold tracking-[-0.025em]">Code de récupération</h2>
           <p className="mt-3 max-w-[54ch] text-sm leading-6 text-muted">
-            Le code n’est jamais conservé en clair. Après un rechargement, en ouvrir un nouveau invalide automatiquement l’ancien.
+            Le serveur n’en conserve qu’une empreinte. Le dernier code affiché est mémorisé uniquement sur cet appareil.
           </p>
 
           <div className="mt-5" aria-live="polite">
             {auth.recoveryCode ? (
               <RecoveryCodeDisplay code={auth.recoveryCode} compact />
             ) : (
-              <div className="flex min-h-44 items-center justify-center rounded-[1.5rem] bg-soft p-6 text-center text-sm text-muted shadow-inset">
-                {loadingCode ? 'Génération sécurisée du code…' : 'Le code ne peut pas être affiché.'}
+              <div className="flex min-h-44 flex-col items-center justify-center rounded-[1.5rem] bg-soft p-6 text-center text-sm leading-6 text-muted shadow-inset">
+                {loadingCode ? (
+                  'Génération sécurisée du code…'
+                ) : (
+                  <>
+                    <p className="font-semibold text-ink">Aucun code n’est disponible sur cet appareil.</p>
+                    <p className="mt-2 max-w-[46ch]">
+                      Ton code déjà émis reste valide. Si tu en génères un ici, il remplacera et invalidera immédiatement l’ancien.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -181,7 +174,9 @@ export const SettingsView = () => {
           <div className="mt-6 border-t border-line pt-6">
             {confirmRotation ? (
               <div>
-                <p className="text-sm font-bold">L’ancien code cessera immédiatement de fonctionner.</p>
+                <p className="text-sm font-bold">
+                  Confirme uniquement si tu as besoin d’un nouveau code : l’ancien cessera immédiatement de fonctionner.
+                </p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" className="button-primary" disabled={loadingCode} onClick={() => void rotate()}>
                     {loadingCode ? 'Renouvellement…' : 'Confirmer le renouvellement'}

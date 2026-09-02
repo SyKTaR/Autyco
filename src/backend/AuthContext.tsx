@@ -35,6 +35,12 @@ import {
   type PrivateServerMutation,
   type PrivateServerSummary,
 } from './supabase'
+import {
+  clearStoredRecoveryCode,
+  issueAndStoreRecoveryCode,
+  loadStoredRecoveryCode,
+  storeRecoveryCode,
+} from './recoveryCodeStorage'
 import type { GameAction, GameState } from '../types/game'
 
 export type AuthStatus =
@@ -57,7 +63,7 @@ interface AuthContextValue {
   createPlayer: (garageName: string, playerName: string) => Promise<void>
   restorePlayer: (recoveryCode: string) => Promise<void>
   completeSetup: () => void
-  getRecoveryCode: () => Promise<string>
+  getRecoveryCode: () => Promise<string | null>
   rotateRecoveryCode: () => Promise<string>
   signOut: () => Promise<void>
   useLocalMode: (reason?: string) => void
@@ -88,7 +94,6 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const [notice, setNotice] = useState<string | null>(null)
   const sessionRef = useRef<AuthSession | null>(null)
   const initializationRef = useRef<Promise<AuthSession> | null>(null)
-  const recoveryCodeRequestRef = useRef<Promise<string> | null>(null)
   const recoverySessionRef = useRef<AuthSession | null>(null)
 
   const updateSession = useCallback((nextSession: AuthSession | null) => {
@@ -123,12 +128,14 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         if (!active) return
         updateSession(refreshed)
         setIdentity(storedIdentity)
+        setRecoveryCode(loadStoredRecoveryCode(refreshed.user.id))
         setStatus('authenticated')
       } catch (error) {
         if (!active) return
         if (error instanceof SupabaseRequestError && error.status === 0) {
           sessionRef.current = storedSession
           setSession(storedSession)
+          setRecoveryCode(loadStoredRecoveryCode(storedSession.user.id))
           setNotice('Supabase est temporairement injoignable. La partie locale reste disponible.')
           setStatus('local')
         } else {
@@ -173,6 +180,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         garageName: createdIdentity.garageName,
         playerName: createdIdentity.playerName,
       })
+      storeRecoveryCode(temporarySession.user.id, createdIdentity.recoveryCode)
       setRecoveryCode(createdIdentity.recoveryCode)
       setSetupKind('created')
       setNotice(null)
@@ -196,6 +204,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         garageName: restoredIdentity.garageName,
         playerName: restoredIdentity.playerName,
       })
+      storeRecoveryCode(temporarySession.user.id, restoredIdentity.recoveryCode)
       setRecoveryCode(restoredIdentity.recoveryCode)
       setSetupKind('restored')
       setNotice(null)
@@ -231,6 +240,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     if (temporaryRecoverySession) {
       await discardTemporarySession(temporaryRecoverySession)
     }
+    if (currentSession) clearStoredRecoveryCode(currentSession.user.id)
     updateSession(null)
     setIdentity(null)
     setRecoveryCode(null)
@@ -277,7 +287,10 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const rotateRecoveryCode = useCallback(async () => {
     if (!configuration) throw new Error('Supabase n’est pas configuré.')
     const nextCode = await runAuthenticated((validSession) =>
-      rotatePlayerRecoveryCode(configuration, validSession)
+      issueAndStoreRecoveryCode(
+        validSession.user.id,
+        () => rotatePlayerRecoveryCode(configuration, validSession),
+      )
     )
     setRecoveryCode(nextCode)
     return nextCode
@@ -285,12 +298,12 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
 
   const getRecoveryCode = useCallback(async () => {
     if (recoveryCode) return recoveryCode
-    recoveryCodeRequestRef.current ??= rotateRecoveryCode()
-      .finally(() => {
-        recoveryCodeRequestRef.current = null
-      })
-    return recoveryCodeRequestRef.current
-  }, [recoveryCode, rotateRecoveryCode])
+    const playerId = sessionRef.current?.user.id
+    if (!playerId) return null
+    const storedCode = loadStoredRecoveryCode(playerId)
+    setRecoveryCode(storedCode)
+    return storedCode
+  }, [recoveryCode])
 
   const getRemoteGame = useCallback(() => {
     if (!configuration) return Promise.reject(new Error('Supabase n’est pas configuré.'))
