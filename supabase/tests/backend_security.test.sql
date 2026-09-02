@@ -1,6 +1,6 @@
 begin;
 
-select plan(31);
+select plan(41);
 
 select has_table('public', 'players', 'players existe');
 select has_table('public', 'market_listings', 'market_listings existe');
@@ -10,6 +10,12 @@ select has_table('public', 'owned_properties', 'owned_properties existe');
 select has_table('public', 'transactions', 'transactions existe');
 select has_table('public', 'game_events', 'game_events existe');
 select has_table('public', 'notifications', 'notifications existe');
+select has_table('public', 'staff_members', 'staff_members existe');
+select has_table('public', 'mechanic_jobs', 'mechanic_jobs existe');
+select has_table('public', 'showroom_slots', 'showroom_slots existe');
+select has_table('public', 'showroom_offers', 'showroom_offers existe');
+select has_column('public', 'staff_members', 'salary_arrears', 'les arriérés de salaire sont persistés');
+select has_column('public', 'showroom_offers', 'expires_at', 'les propositions showroom expirent côté serveur');
 select has_column(
   'public',
   'vehicle_problems',
@@ -43,6 +49,12 @@ select is(
   12,
   'le catalogue Occasion contient douze modèles'
 );
+
+select is(
+  (select acquisition_cost from private.property_templates where id = 'grand-garage-autyco'),
+  750000::bigint,
+  'le Grand Garage distant coûte 750 000 euros'
+);
 select is(
   (select count(*)::integer from private.vehicle_templates where market_tier = 'premium'),
   8,
@@ -62,12 +74,13 @@ select is(
     where namespace.nspname = 'public'
       and relation.relname in (
         'players', 'market_listings', 'owned_vehicles', 'vehicle_problems',
-        'owned_properties', 'transactions', 'game_events', 'notifications'
+        'owned_properties', 'transactions', 'game_events', 'notifications',
+        'staff_members', 'mechanic_jobs', 'showroom_slots', 'showroom_offers'
       )
       and relation.relrowsecurity
   ),
-  8,
-  'RLS est actif sur les huit tables exposées'
+  12,
+  'RLS est actif sur les douze tables exposées'
 );
 
 select ok(
@@ -77,7 +90,8 @@ select ok(
     cross join unnest(array[
       'public.players', 'public.market_listings', 'public.owned_vehicles',
       'public.vehicle_problems', 'public.owned_properties', 'public.transactions',
-      'public.game_events', 'public.notifications'
+      'public.game_events', 'public.notifications', 'public.staff_members',
+      'public.mechanic_jobs', 'public.showroom_slots', 'public.showroom_offers'
     ]) as relation_name
     cross join unnest(array['INSERT', 'UPDATE', 'DELETE']) as privilege_name
     where has_table_privilege(role_name, relation_name, privilege_name)
@@ -91,7 +105,8 @@ select ok(
     from unnest(array[
       'public.players', 'public.market_listings', 'public.owned_vehicles',
       'public.vehicle_problems', 'public.owned_properties', 'public.transactions',
-      'public.game_events', 'public.notifications'
+      'public.game_events', 'public.notifications', 'public.staff_members',
+      'public.mechanic_jobs', 'public.showroom_slots', 'public.showroom_offers'
     ]) as relation_name
     where has_table_privilege('anon', relation_name, 'SELECT')
   ),
@@ -175,6 +190,43 @@ select ok(
     where namespace.nspname = 'private' and routine.proname = 'perform_selected_repair'
   ),
   'la réparation sélective privilégiée est confinée au schéma private'
+);
+
+select ok(
+  (
+    select routine.prosecdef
+    from pg_catalog.pg_proc as routine
+    join pg_catalog.pg_namespace as namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'private' and routine.proname = 'perform_empire_action'
+  ),
+  'la mutation Empire privilégiée est confinée au schéma private'
+);
+
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'private.perform_empire_action(text,jsonb,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'private.perform_empire_action(text,jsonb,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'private.with_empire_state(uuid,jsonb)',
+    'EXECUTE'
+  ),
+  'seul le point d’entrée Empire authentifié expose son enrichissement d’état'
+);
+
+select ok(
+  position(
+    'market_tier in (''standard'', ''premium'')'
+    in lower(pg_get_functiondef('private.advance_empire(uuid)'::regprocedure))
+  ) > 0,
+  'le moteur commercial serveur limite explicitement ses achats aux gammes standard et premium'
 );
 
 select ok(

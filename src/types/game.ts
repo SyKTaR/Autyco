@@ -103,6 +103,47 @@ export interface OwnedProperty extends PropertyOffer {
   workCompletesAt?: number
 }
 
+export type StaffRole = 'mechanic' | 'salesperson'
+export type StaffStatus = 'active' | 'paused'
+export type StaffPauseReason = 'manual' | 'payroll'
+
+export interface StaffMember {
+  id: string
+  role: StaffRole
+  hiredAt: number
+  nextPayrollAt: number
+  status: StaffStatus
+  pausedReason?: StaffPauseReason
+  salaryArrears: number
+}
+
+export type CommercialMarketProfile = 'standard' | 'premium' | 'both'
+
+export interface CommercialSettings {
+  enabled: boolean
+  maxPurchasePrice: number
+  minDiscountPercent: number
+  marketProfile: CommercialMarketProfile
+}
+
+export type MechanicJobStage = 'diagnosis' | 'repair' | 'listing'
+
+export interface MechanicJob {
+  employeeId: string
+  vehicleId: string
+  stage: MechanicJobStage
+  startedAt: number
+  completesAt: number
+}
+
+export interface ShowroomOffer {
+  id: string
+  vehicleId: string
+  amount: number
+  createdAt: number
+  expiresAt: number
+}
+
 export interface GameNotification {
   id: string
   tone: 'neutral' | 'success' | 'warning'
@@ -118,6 +159,13 @@ export interface GameState {
   properties: OwnedProperty[]
   listings: MarketListing[]
   marketRefreshAt: Record<MarketTier, number>
+  staff: StaffMember[]
+  mechanicJobs: MechanicJob[]
+  commercialSettings: CommercialSettings
+  nextCommercialActionAt: number
+  showroomVehicleIds: string[]
+  showroomOffers: ShowroomOffer[]
+  nextShowroomOfferAt: number
   notifications: GameNotification[]
 }
 
@@ -133,5 +181,12 @@ export type GameAction =
   | { type: 'TOGGLE_VEHICLE_KEPT'; vehicleId: string }
   | { type: 'ACQUIRE_PROPERTY'; offerId: string; now: number }
   | { type: 'START_PROPERTY_WORKS'; propertyId: string; now: number }
+  | { type: 'HIRE_STAFF'; role: StaffRole; now: number }
+  | { type: 'TOGGLE_STAFF_STATUS'; employeeId: string }
+  | { type: 'PAY_STAFF_ARREARS'; employeeId: string }
+  | { type: 'UPDATE_COMMERCIAL_SETTINGS'; settings: CommercialSettings; now: number }
+  | { type: 'TOGGLE_SHOWROOM_VEHICLE'; vehicleId: string; now: number }
+  | { type: 'ACCEPT_SHOWROOM_OFFER'; offerId: string; now: number }
+  | { type: 'REJECT_SHOWROOM_OFFER'; offerId: string; now: number }
   | { type: 'DISMISS_NOTIFICATION'; notificationId: string }
   | { type: 'TICK'; now: number }

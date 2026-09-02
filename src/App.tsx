@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppHeader, type AppView } from './components/AppHeader'
 import { CompetitionView, type ServerInviteCode } from './components/CompetitionView'
 import { GarageView } from './components/GarageView'
+import { EmpireView } from './components/EmpireView'
 import { MarketView } from './components/MarketView'
 import { Notifications } from './components/Notifications'
 import { RealEstateView } from './components/RealEstateView'
@@ -14,6 +15,7 @@ const viewTitles: Record<AppView, string> = {
   garage: 'Garage',
   market: 'Marché',
   'real-estate': 'Immobilier',
+  empire: 'Empire',
   competition: 'Compétition',
   settings: 'Réglages',
 }
@@ -53,7 +55,9 @@ function App() {
       ) : view === 'market' ? (
         <MarketView />
       ) : view === 'real-estate' ? (
-        <RealEstateView />
+        <RealEstateView onOpenEmpire={() => setView('empire')} />
+      ) : view === 'empire' ? (
+        <EmpireView onBack={() => setView('real-estate')} />
       ) : view === 'competition' ? (
         <CompetitionView inviteCode={serverInviteCode} onInviteCodeChange={setServerInviteCode} />
       ) : (

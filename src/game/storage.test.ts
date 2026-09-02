@@ -150,6 +150,34 @@ describe('sauvegarde locale', () => {
     )
   })
 
+  it('complète les sauvegardes v2 antérieures au palier Empire sans perdre la partie', () => {
+    const storage = new MemoryStorage()
+    const current = createInitialGame(1_000, () => 0.2)
+    const {
+      staff: _staff,
+      mechanicJobs: _mechanicJobs,
+      commercialSettings: _commercialSettings,
+      nextCommercialActionAt: _nextCommercialActionAt,
+      showroomVehicleIds: _showroomVehicleIds,
+      showroomOffers: _showroomOffers,
+      nextShowroomOfferAt: _nextShowroomOfferAt,
+      ...preEmpireState
+    } = current
+    storage.setItem('garage-game:save:v2', JSON.stringify({ ...preEmpireState, cash: 98_765 }))
+
+    const migrated = loadGame(storage)
+    assert.equal(migrated?.cash, 98_765)
+    assert.deepEqual(migrated?.staff, [])
+    assert.deepEqual(migrated?.mechanicJobs, [])
+    assert.deepEqual(migrated?.showroomVehicleIds, [])
+    assert.deepEqual(migrated?.commercialSettings, {
+      enabled: true,
+      maxPurchasePrice: 35_000,
+      minDiscountPercent: 16,
+      marketProfile: 'both',
+    })
+  })
+
   it('isole le cache de chaque compte de la partie locale', () => {
     const storage = new MemoryStorage()
     const localGame = createInitialGame(1_000, () => 0.2)

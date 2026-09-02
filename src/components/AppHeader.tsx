@@ -2,14 +2,14 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useAuth } from '../backend/AuthContext'
 import {
   getGarageCapacity,
-  getRecurringPropertyCosts,
+  getRecurringEmpireCosts,
   getVehicleResaleValue,
 } from '../game/engine'
 import { formatMoney } from '../game/format'
 import type { GameState } from '../types/game'
 import { MetricTile } from './ui/MetricTile'
 
-export type AppView = 'garage' | 'market' | 'real-estate' | 'competition' | 'settings'
+export type AppView = 'garage' | 'market' | 'real-estate' | 'empire' | 'competition' | 'settings'
 
 interface AppHeaderProps {
   view: AppView
@@ -23,6 +23,7 @@ const NavIcon = ({ view }: { view: AppView }) => {
     garage: <path d="M3 11.5 5.5 6h13l2.5 5.5M5 17h14M6.5 17v2m11-2v2M4 12h16v5H4zM7 14.5h.01M17 14.5h.01" />,
     market: <path d="M4 6h16l-1.5 5H5.5L4 6Zm2 5v8m12-8v8M8.5 15h7M7 3v3m10-3v3" />,
     'real-estate': <path d="M4 20V8l8-4 8 4v12M8 20v-7h8v7M9 9h.01M15 9h.01" />,
+    empire: <path d="M4 20V9l8-5 8 5v11M8 20v-6h8v6M7 10h10M9 7.5h6" />,
     competition: <path d="M8 4h8v3.5a4 4 0 0 1-8 0V4Zm0 2H4v1.5A3.5 3.5 0 0 0 7.5 11M16 6h4v1.5a3.5 3.5 0 0 1-3.5 3.5M12 11.5V16m-4 4h8m-6-4h4" />,
     settings: <path d="M12 15.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Zm0-11.75v2M12 18.5v2M3.5 12h2M18.5 12h2M5.99 5.99l1.42 1.42m9.18 9.18 1.42 1.42M18.01 5.99l-1.42 1.42m-9.18 9.18-1.42 1.42" />,
   }
@@ -84,7 +85,7 @@ export const AppHeader = ({ view, onViewChange, attention, state }: AppHeaderPro
     0,
   )
   const capacity = getGarageCapacity(state)
-  const recurringCosts = getRecurringPropertyCosts(state)
+  const recurringCosts = getRecurringEmpireCosts(state)
   const metrics = [
     { label: 'Valeur du parc', value: formatMoney(stockValue) },
     {
@@ -100,7 +101,7 @@ export const AppHeader = ({ view, onViewChange, attention, state }: AppHeaderPro
     {
       label: 'Charges / jour',
       value: formatMoney(recurringCosts),
-      detail: `${state.properties.length} ${state.properties.length > 1 ? 'locaux' : 'local'}`,
+      detail: `${state.properties.length} ${state.properties.length > 1 ? 'locaux' : 'local'} · ${state.staff.length} employé${state.staff.length > 1 ? 's' : ''}`,
     },
   ]
 
@@ -218,7 +219,7 @@ export const AppHeader = ({ view, onViewChange, attention, state }: AppHeaderPro
           <nav className="hidden items-center gap-1 rounded-full bg-paper/75 p-1 md:flex" aria-label="Navigation principale">
             <NavButton active={view === 'garage'} target="garage" label="Garage" attentionCount={attention.garage} onClick={() => onViewChange('garage')} />
             <NavButton active={view === 'market'} target="market" label="Marché" onClick={() => onViewChange('market')} />
-            <NavButton active={view === 'real-estate'} target="real-estate" label="Immobilier" attentionCount={attention['real-estate']} onClick={() => onViewChange('real-estate')} />
+            <NavButton active={view === 'real-estate' || view === 'empire'} target="real-estate" label="Immobilier" attentionCount={attention['real-estate']} onClick={() => onViewChange('real-estate')} />
             <NavButton active={view === 'competition'} target="competition" label="Compétition" onClick={() => onViewChange('competition')} />
             <NavButton active={view === 'settings'} target="settings" label="Réglages" onClick={() => onViewChange('settings')} />
           </nav>
@@ -231,7 +232,7 @@ export const AppHeader = ({ view, onViewChange, attention, state }: AppHeaderPro
       >
         <NavButton active={view === 'garage'} target="garage" label="Garage" attentionCount={attention.garage} onClick={() => onViewChange('garage')} />
         <NavButton active={view === 'market'} target="market" label="Marché" onClick={() => onViewChange('market')} />
-        <NavButton active={view === 'real-estate'} target="real-estate" label="Locaux" attentionCount={attention['real-estate']} onClick={() => onViewChange('real-estate')} />
+        <NavButton active={view === 'real-estate' || view === 'empire'} target="real-estate" label="Locaux" attentionCount={attention['real-estate']} onClick={() => onViewChange('real-estate')} />
         <NavButton active={view === 'competition'} target="competition" label="Serveur" onClick={() => onViewChange('competition')} />
         <NavButton active={view === 'settings'} target="settings" label="Réglages" onClick={() => onViewChange('settings')} />
       </nav>

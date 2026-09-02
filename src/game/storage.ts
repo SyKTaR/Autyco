@@ -79,44 +79,88 @@ const isLegacyGameState = (value: unknown): value is LegacyGameStateV1 => {
   return candidate.version === 1 && typeof candidate.capacity === 'number'
 }
 
-type MigratableGameState = Omit<GameState, 'marketRefreshAt'> & {
-  marketRefreshAt?: Record<MarketTier, number>
-}
+type EmpireStateKey =
+  | 'staff'
+  | 'mechanicJobs'
+  | 'commercialSettings'
+  | 'nextCommercialActionAt'
+  | 'showroomVehicleIds'
+  | 'showroomOffers'
+  | 'nextShowroomOfferAt'
 
-const withCurrentProblemShape = (state: MigratableGameState): GameState => ({
-  ...state,
-  listings: state.listings.map((listing) => ({
-    ...listing,
-    market: getListingMarket(listing),
-  })),
-  marketRefreshAt: Object.fromEntries(
-    (['standard', 'premium', 'collector'] as const).map((market) => {
-      const persisted = state.marketRefreshAt?.[market]
-      if (typeof persisted === 'number' && Number.isFinite(persisted)) return [market, persisted]
-      const expirations = state.listings
-        .filter((listing) => getListingMarket(listing) === market)
-        .map((listing) => listing.expiresAt)
-        .filter((timestamp) => Number.isFinite(timestamp))
-      return [market, expirations.length > 0 ? Math.max(...expirations) : Date.now()]
+type MigratableGameState = Omit<GameState, 'marketRefreshAt' | EmpireStateKey> & {
+  marketRefreshAt?: Record<MarketTier, number>
+} & Partial<Pick<GameState, EmpireStateKey>>
+
+const withCurrentProblemShape = (state: MigratableGameState): GameState => {
+  const now = Date.now()
+  const vehicleIds = new Set(state.vehicles.map((vehicle) => vehicle.id))
+  const keptVehicleIds = new Set(
+    state.vehicles.filter((vehicle) => vehicle.kept).map((vehicle) => vehicle.id),
+  )
+  const staff = Array.isArray(state.staff) ? state.staff : []
+  const staffIds = new Set(staff.map((employee) => employee.id))
+  const showroomVehicleIds = Array.isArray(state.showroomVehicleIds)
+    ? state.showroomVehicleIds.filter((id) => keptVehicleIds.has(id)).slice(0, 4)
+    : []
+
+  return {
+    ...state,
+    listings: state.listings.map((listing) => ({
+      ...listing,
+      market: getListingMarket(listing),
+    })),
+    marketRefreshAt: Object.fromEntries(
+      (['standard', 'premium', 'collector'] as const).map((market) => {
+        const persisted = state.marketRefreshAt?.[market]
+        if (typeof persisted === 'number' && Number.isFinite(persisted)) return [market, persisted]
+        const expirations = state.listings
+          .filter((listing) => getListingMarket(listing) === market)
+          .map((listing) => listing.expiresAt)
+          .filter((timestamp) => Number.isFinite(timestamp))
+        return [market, expirations.length > 0 ? Math.max(...expirations) : Date.now()]
+      }),
+    ) as Record<MarketTier, number>,
+    staff,
+    mechanicJobs: Array.isArray(state.mechanicJobs)
+      ? state.mechanicJobs.filter(
+          (job) => staffIds.has(job.employeeId) && vehicleIds.has(job.vehicleId),
+        )
+      : [],
+    commercialSettings: state.commercialSettings ?? {
+      enabled: true,
+      maxPurchasePrice: 35_000,
+      minDiscountPercent: 16,
+      marketProfile: 'both',
+    },
+    nextCommercialActionAt: Number.isFinite(state.nextCommercialActionAt)
+      ? state.nextCommercialActionAt as number
+      : now + 60_000,
+    showroomVehicleIds,
+    showroomOffers: Array.isArray(state.showroomOffers)
+      ? state.showroomOffers.filter((offer) => showroomVehicleIds.includes(offer.vehicleId))
+      : [],
+    nextShowroomOfferAt: Number.isFinite(state.nextShowroomOfferAt)
+      ? state.nextShowroomOfferAt as number
+      : now + 12 * 60 * 1_000,
+    vehicles: state.vehicles.map((vehicle) => {
+      const hasPersistedSelection = vehicle.problems.some(
+        (problem) => typeof problem.selectedForRepair === 'boolean',
+      )
+      return {
+        ...vehicle,
+        problems: vehicle.problems.map((problem) => ({
+          ...problem,
+          severity: problem.severity === 'critical' || problem.severity === 'minor'
+            ? problem.severity
+            : severityByProblemId.get(problem.id) ?? 'minor',
+          selectedForRepair: problem.selectedForRepair === true
+            || (!hasPersistedSelection && vehicle.status === 'repairing' && !problem.repaired),
+        })),
+      }
     }),
-  ) as Record<MarketTier, number>,
-  vehicles: state.vehicles.map((vehicle) => {
-    const hasPersistedSelection = vehicle.problems.some(
-      (problem) => typeof problem.selectedForRepair === 'boolean',
-    )
-    return {
-      ...vehicle,
-      problems: vehicle.problems.map((problem) => ({
-        ...problem,
-        severity: problem.severity === 'critical' || problem.severity === 'minor'
-          ? problem.severity
-          : severityByProblemId.get(problem.id) ?? 'minor',
-        selectedForRepair: problem.selectedForRepair === true
-          || (!hasPersistedSelection && vehicle.status === 'repairing' && !problem.repaired),
-      })),
-    }
-  }),
-})
+  }
+}
 
 export const migrateGameState = (value: unknown): GameState | null => {
   if (isGameState(value)) return withCurrentProblemShape(value)

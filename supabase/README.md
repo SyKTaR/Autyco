@@ -60,8 +60,9 @@ constitue pas, à elle seule, une limitation globale par adresse IP.
 1. Créer un projet Supabase gratuit dans une région proche des joueurs.
 2. Laisser le schéma `private` hors de **Project Settings → API → Exposed schemas**.
 3. Appliquer les migrations dans l'ordre (`202609010001_backend_foundation.sql`,
-   `202609010002_anonymous_player_identity.sql`, `202609010003_fix_pgcrypto_search_path.sql`, puis
-   `202609010004_private_servers.sql`) avec le SQL Editor, ou installer la CLI Supabase
+   `202609010002_anonymous_player_identity.sql`, `202609010003_fix_pgcrypto_search_path.sql`,
+   `202609010004_private_servers.sql`, puis les migrations datées du 2 septembre dans leur ordre
+   numérique jusqu’à `202609020004_empire.sql`) avec le SQL Editor, ou installer la CLI Supabase
    puis exécuter `supabase link --project-ref <PROJECT_REF>` et `supabase db push`.
 4. Dans **Authentication → Providers → Anonymous Sign-Ins**, activer les connexions anonymes. Le
    provider Email n'est pas utilisé par Garage Game.

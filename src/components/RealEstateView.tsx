@@ -2,10 +2,10 @@ import { useGame } from '../context/GameContext'
 import {
   getGarageCapacity,
   getPropertyCycleCost,
-  getRecurringPropertyCosts,
+  getRecurringEmpireCosts,
 } from '../game/engine'
 import { formatMoney, formatRemaining } from '../game/format'
-import { BASE_GARAGE_CAPACITY, PROPERTY_MARKET } from '../game/properties'
+import { BASE_GARAGE_CAPACITY, GRAND_GARAGE_ID, PROPERTY_MARKET } from '../game/properties'
 import type { OwnedProperty, PropertyOffer, PropertyStatus } from '../types/game'
 import { StatusBadge, type StatusTone } from './ui/StatusBadge'
 import { InventoryCard } from './ui/InventoryCard'
@@ -64,7 +64,15 @@ const PropertyFacts = ({ property }: { property: PropertyOffer }) => (
   </dl>
 )
 
-const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: number }) => {
+const OwnedPropertyCard = ({
+  property,
+  now,
+  onOpenEmpire,
+}: {
+  property: OwnedProperty
+  now: number
+  onOpenEmpire: () => void
+}) => {
   const { state, dispatch } = useGame()
   const canStartWorks = state.cash >= property.workCost
   const totalWorkTime = property.workDurationSeconds * 1_000
@@ -157,7 +165,17 @@ const OwnedPropertyCard = ({ property, now }: { property: OwnedProperty; now: nu
         </div>
       )}
 
-      {property.status === 'operational' && (
+      {property.status === 'operational' && property.id === GRAND_GARAGE_ID ? (
+        <div className="action-zone bg-drive-soft">
+          <div>
+            <p className="action-title">Showroom et équipe disponibles</p>
+            <p className="action-copy">Expose ta collection, traite les offres privées et pilote l’automatisation.</p>
+          </div>
+          <button type="button" className="button-primary shrink-0" onClick={onOpenEmpire}>
+            Ouvrir Empire
+          </button>
+        </div>
+      ) : property.status === 'operational' && (
         <div className="bg-success/10 px-4 py-3 text-sm font-semibold leading-5 text-success sm:px-6">
           Les {property.capacity} places sont intégrées à la capacité partagée.
         </div>
@@ -171,7 +189,7 @@ const MarketPropertyCard = ({ offer, acquired }: { offer: PropertyOffer; acquire
   const canAcquire = !acquired && state.cash >= offer.acquisitionCost
 
   return (
-    <InventoryCard className="flex h-full flex-col overflow-hidden transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-raised">
+    <InventoryCard className={`flex h-full flex-col overflow-hidden transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-raised ${offer.id === GRAND_GARAGE_ID ? 'xl:col-span-2' : ''}`}>
       <div className="flex-1 p-4 sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 gap-3">
@@ -189,6 +207,13 @@ const MarketPropertyCard = ({ offer, acquired }: { offer: PropertyOffer; acquire
         <div className="mt-5">
           <PropertyFacts property={offer} />
         </div>
+        {offer.id === GRAND_GARAGE_ID && (
+          <div className="mt-3 flex flex-wrap gap-2" aria-label="Équipements inclus">
+            <StatusBadge tone="accent">Showroom 4 véhicules</StatusBadge>
+            <StatusBadge tone="inverse">2 garagistes</StatusBadge>
+            <StatusBadge tone="inverse">1 commercial</StatusBadge>
+          </div>
+        )}
         {offer.acquisitionMode === 'rent' && (
           <p className="mt-3 text-sm leading-5 text-muted">
             Dont {formatMoney(offer.rentPerCycle)} de loyer et{' '}
@@ -215,10 +240,10 @@ const MarketPropertyCard = ({ offer, acquired }: { offer: PropertyOffer; acquire
   )
 }
 
-export const RealEstateView = () => {
+export const RealEstateView = ({ onOpenEmpire }: { onOpenEmpire: () => void }) => {
   const { state, now } = useGame()
   const totalCapacity = getGarageCapacity(state)
-  const recurringCosts = getRecurringPropertyCosts(state)
+  const recurringCosts = getRecurringEmpireCosts(state)
 
   return (
     <main id="main-content" tabIndex={-1} className="app-main">
@@ -243,7 +268,7 @@ export const RealEstateView = () => {
             <dd className="mt-1 font-mono text-lg font-semibold">{BASE_GARAGE_CAPACITY}</dd>
           </div>
           <div className="col-span-2 min-w-0 border-t border-line px-3 py-3 sm:col-span-1 sm:border-t-0 sm:px-5 sm:py-4">
-            <dt className="text-sm font-medium text-muted">Par jour</dt>
+            <dt className="text-sm font-medium text-muted">Total / jour</dt>
             <dd className="mt-1 truncate font-mono text-lg font-semibold">{formatMoney(recurringCosts)}</dd>
           </div>
         </dl>
@@ -267,7 +292,7 @@ export const RealEstateView = () => {
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {state.properties.map((property) => (
-              <OwnedPropertyCard key={property.instanceId} property={property} now={now} />
+              <OwnedPropertyCard key={property.instanceId} property={property} now={now} onOpenEmpire={onOpenEmpire} />
             ))}
           </div>
         </section>

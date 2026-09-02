@@ -588,6 +588,18 @@ const actionPayload = (action: GameAction): Record<string, unknown> => {
       return { offerId: action.offerId }
     case 'START_PROPERTY_WORKS':
       return { propertyId: action.propertyId }
+    case 'HIRE_STAFF':
+      return { role: action.role }
+    case 'TOGGLE_STAFF_STATUS':
+    case 'PAY_STAFF_ARREARS':
+      return { employeeId: action.employeeId }
+    case 'UPDATE_COMMERCIAL_SETTINGS':
+      return { settings: action.settings }
+    case 'TOGGLE_SHOWROOM_VEHICLE':
+      return { vehicleId: action.vehicleId }
+    case 'ACCEPT_SHOWROOM_OFFER':
+    case 'REJECT_SHOWROOM_OFFER':
+      return { offerId: action.offerId }
     case 'DISMISS_NOTIFICATION':
       return { notificationId: action.notificationId }
     case 'TICK':

@@ -56,4 +56,19 @@ export const PROPERTY_MARKET: PropertyOffer[] = [
     workCost: 18_000,
     workDurationSeconds: 75,
   },
+  {
+    id: 'grand-garage-autyco',
+    name: 'Grand Garage AUTYCO',
+    district: 'Boulevard des ateliers',
+    description: 'Le siège de ton empire : 24 places, une galerie de collection et les espaces nécessaires pour constituer une équipe.',
+    capacity: 24,
+    acquisitionMode: 'purchase',
+    acquisitionCost: 750_000,
+    rentPerCycle: 0,
+    chargesPerCycle: 4_500,
+    workCost: 0,
+    workDurationSeconds: 0,
+  },
 ]
+
+export const GRAND_GARAGE_ID = 'grand-garage-autyco'

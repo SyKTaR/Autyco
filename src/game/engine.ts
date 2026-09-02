@@ -1,17 +1,22 @@
 import { PROBLEM_CATALOG, VEHICLE_CATALOG } from './catalog'
 import {
   BASE_GARAGE_CAPACITY,
+  GRAND_GARAGE_ID,
   PROPERTY_CHARGE_CYCLE_MS,
   PROPERTY_MARKET,
 } from './properties'
 import type {
+  CommercialSettings,
   GameNotification,
   GameState,
   MarketTier,
   MarketListing,
+  MechanicJob,
   OwnedVehicle,
   OwnedProperty,
   RiskLevel,
+  StaffMember,
+  StaffRole,
   VehicleProblem,
 } from '../types/game'
 
@@ -19,6 +24,25 @@ export type RandomSource = () => number
 
 const STARTING_CASH = 20_000
 export const CRITICAL_RESALE_CAP_FACTOR = 0.55
+export const SHOWROOM_CAPACITY = 4
+export const SHOWROOM_OFFER_DURATION_MS = 20 * 60 * 1_000
+export const SHOWROOM_OFFER_DELAY_SECONDS = [720, 1_200] as const
+export const COMMERCIAL_ACTION_DELAY_SECONDS = [45, 75] as const
+export const MECHANIC_DIAGNOSIS_SECONDS = 18
+export const MECHANIC_LISTING_SECONDS = 9
+export const MECHANIC_REPAIR_TIME_FACTOR = 1.55
+
+export const STAFF_CONFIG: Record<StaffRole, { limit: number; hireCost: number; salaryPerCycle: number }> = {
+  mechanic: { limit: 2, hireCost: 110_000, salaryPerCycle: 9_000 },
+  salesperson: { limit: 1, hireCost: 160_000, salaryPerCycle: 12_000 },
+}
+
+export const DEFAULT_COMMERCIAL_SETTINGS: CommercialSettings = {
+  enabled: true,
+  maxPurchasePrice: 35_000,
+  minDiscountPercent: 16,
+  marketProfile: 'both',
+}
 
 export const MARKET_TIERS: MarketTier[] = ['standard', 'premium', 'collector']
 export const MARKET_CONFIG: Record<
@@ -167,6 +191,11 @@ const withNotification = (
   ],
 })
 
+const withoutMechanicJob = (state: GameState, vehicleId: string): GameState => ({
+  ...state,
+  mechanicJobs: state.mechanicJobs.filter((job) => job.vehicleId !== vehicleId),
+})
+
 export const createInitialGame = (
   now = Date.now(),
   random: RandomSource = Math.random,
@@ -181,6 +210,21 @@ export const createInitialGame = (
     properties: [],
     listings: createMarketListings(now, random, marketRefreshAt),
     marketRefreshAt,
+    staff: [],
+    mechanicJobs: [],
+    commercialSettings: DEFAULT_COMMERCIAL_SETTINGS,
+    nextCommercialActionAt: now + randomInteger(
+      COMMERCIAL_ACTION_DELAY_SECONDS[0],
+      COMMERCIAL_ACTION_DELAY_SECONDS[1],
+      random,
+    ) * 1_000,
+    showroomVehicleIds: [],
+    showroomOffers: [],
+    nextShowroomOfferAt: now + randomInteger(
+      SHOWROOM_OFFER_DELAY_SECONDS[0],
+      SHOWROOM_OFFER_DELAY_SECONDS[1],
+      random,
+    ) * 1_000,
     notifications: [],
   }
 }
@@ -196,6 +240,17 @@ export const getPropertyCycleCost = (property: OwnedProperty) =>
 
 export const getRecurringPropertyCosts = (state: GameState) =>
   state.properties.reduce((total, property) => total + getPropertyCycleCost(property), 0)
+
+export const hasOperationalGrandGarage = (state: GameState) =>
+  state.properties.some(
+    (property) => property.id === GRAND_GARAGE_ID && property.status === 'operational',
+  )
+
+export const getStaffCycleCost = (staff: readonly StaffMember[]) =>
+  staff.reduce((total, employee) => total + STAFF_CONFIG[employee.role].salaryPerCycle, 0)
+
+export const getRecurringEmpireCosts = (state: GameState) =>
+  getRecurringPropertyCosts(state) + getStaffCycleCost(state.staff)
 
 const getSelectedUnrepairedProblems = (
   vehicle: OwnedVehicle,
@@ -373,11 +428,12 @@ export const diagnoseVehicle = (
 ) => {
   const vehicle = state.vehicles.find((item) => item.id === vehicleId)
   if (!vehicle || vehicle.status !== 'needs-diagnosis') return state
+  const availableState = withoutMechanicJob(state, vehicleId)
   const problems = selectProblems(vehicle.risk, random)
   const repairCost = problems.reduce((sum, problem) => sum + problem.cost, 0)
   const nextState = {
-    ...state,
-    vehicles: state.vehicles.map((item) =>
+    ...availableState,
+    vehicles: availableState.vehicles.map((item) =>
       item.id === vehicleId ? { ...item, problems, status: 'needs-decision' as const } : item,
     ),
   }
@@ -409,14 +465,15 @@ export const startRepair = (
     return withNotification(state, 'Trésorerie insuffisante pour lancer les réparations.', 'warning', random)
   }
   const repairCompletesAt = now + getRepairDuration(vehicle, [...selectedIds]) * 1_000
+  const availableState = withoutMechanicJob(state, vehicleId)
   const unresolvedAfterRepair = vehicle.problems.filter(
     (problem) => !problem.repaired && !selectedIds.has(problem.id),
   ).length
   return withNotification(
     {
-      ...state,
-      cash: state.cash - cost,
-      vehicles: state.vehicles.map((item) =>
+      ...availableState,
+      cash: availableState.cash - cost,
+      vehicles: availableState.vehicles.map((item) =>
         item.id === vehicleId
           ? {
               ...item,
@@ -446,10 +503,11 @@ export const skipRepair = (
 ) => {
   const vehicle = state.vehicles.find((item) => item.id === vehicleId)
   if (!vehicle || vehicle.status !== 'needs-decision') return state
+  const availableState = withoutMechanicJob(state, vehicleId)
   return withNotification(
     {
-      ...state,
-      vehicles: state.vehicles.map((item) =>
+      ...availableState,
+      vehicles: availableState.vehicles.map((item) =>
         item.id === vehicleId
           ? {
               ...item,
@@ -495,10 +553,11 @@ export const listVehicle = (
     )
   }
   const chance = getSaleChance(vehicle, normalizedPrice)
+  const availableState = withoutMechanicJob(state, vehicleId)
   return withNotification(
     {
-      ...state,
-      vehicles: state.vehicles.map((item) =>
+      ...availableState,
+      vehicles: availableState.vehicles.map((item) =>
         item.id === vehicleId
           ? {
               ...item,
@@ -598,8 +657,18 @@ export const toggleVehicleKept = (
     }
   })
 
+  const showroomVehicleIds = kept
+    ? state.showroomVehicleIds
+    : state.showroomVehicleIds.filter((id) => id !== vehicleId)
   return withNotification(
-    { ...state, vehicles },
+    {
+      ...withoutMechanicJob(state, vehicleId),
+      vehicles,
+      showroomVehicleIds,
+      showroomOffers: kept
+        ? state.showroomOffers
+        : state.showroomOffers.filter((offer) => offer.vehicleId !== vehicleId),
+    },
     kept
       ? `${vehicle.model} rejoint la collection${cancelsListing ? ' · annonce retirée' : ''}.`
       : `${vehicle.model} repasse dans le stock actif.`,
@@ -676,6 +745,444 @@ export const startPropertyWorks = (
   )
 }
 
+export const hireStaff = (
+  state: GameState,
+  role: StaffRole,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  if (!hasOperationalGrandGarage(state)) {
+    return withNotification(state, 'Le Grand Garage doit être opérationnel avant toute embauche.', 'warning', random)
+  }
+  const config = STAFF_CONFIG[role]
+  if (state.staff.filter((employee) => employee.role === role).length >= config.limit) {
+    return withNotification(state, 'Le plafond de ce poste est déjà atteint.', 'warning', random)
+  }
+  if (state.cash < config.hireCost) {
+    return withNotification(state, 'Trésorerie insuffisante pour cette embauche.', 'warning', random)
+  }
+  const employee: StaffMember = {
+    id: makeId(role, now, random),
+    role,
+    hiredAt: now,
+    nextPayrollAt: now + PROPERTY_CHARGE_CYCLE_MS,
+    status: 'active',
+    salaryArrears: 0,
+  }
+  return withNotification(
+    {
+      ...state,
+      cash: state.cash - config.hireCost,
+      staff: [...state.staff, employee],
+      nextCommercialActionAt: role === 'salesperson'
+        ? now + randomInteger(
+            COMMERCIAL_ACTION_DELAY_SECONDS[0],
+            COMMERCIAL_ACTION_DELAY_SECONDS[1],
+            random,
+          ) * 1_000
+        : state.nextCommercialActionAt,
+    },
+    role === 'mechanic'
+      ? 'Garagiste recruté. Il prend en charge le stock actif en continu.'
+      : 'Commercial recruté. Son premier repérage du Marché est programmé.',
+    'success',
+    random,
+  )
+}
+
+export const toggleStaffStatus = (
+  state: GameState,
+  employeeId: string,
+  random: RandomSource = Math.random,
+) => {
+  const employee = state.staff.find((item) => item.id === employeeId)
+  if (!employee) return state
+  if (employee.pausedReason === 'payroll' && employee.salaryArrears > 0) {
+    return withNotification(state, 'Règle d’abord les salaires en retard pour réactiver ce poste.', 'warning', random)
+  }
+  const activating = employee.status === 'paused'
+  return withNotification(
+    {
+      ...state,
+      staff: state.staff.map((item) => item.id === employeeId
+        ? {
+            ...item,
+            status: activating ? 'active' as const : 'paused' as const,
+            pausedReason: activating ? undefined : 'manual' as const,
+          }
+        : item),
+    },
+    `${employee.role === 'mechanic' ? 'Garagiste' : 'Commercial'} ${activating ? 'réactivé' : 'mis en pause'}.`,
+    'neutral',
+    random,
+  )
+}
+
+export const payStaffArrears = (
+  state: GameState,
+  employeeId: string,
+  random: RandomSource = Math.random,
+) => {
+  const employee = state.staff.find((item) => item.id === employeeId)
+  if (!employee || employee.salaryArrears <= 0) return state
+  if (state.cash < employee.salaryArrears) {
+    return withNotification(state, 'Trésorerie insuffisante pour solder les salaires en retard.', 'warning', random)
+  }
+  return withNotification(
+    {
+      ...state,
+      cash: state.cash - employee.salaryArrears,
+      staff: state.staff.map((item) => item.id === employeeId
+        ? { ...item, salaryArrears: 0, status: 'active' as const, pausedReason: undefined }
+        : item),
+    },
+    `Arriéré de ${employee.salaryArrears.toLocaleString('fr-FR')} € réglé · poste réactivé.`,
+    'success',
+    random,
+  )
+}
+
+export const updateCommercialSettings = (
+  state: GameState,
+  settings: CommercialSettings,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  if (!hasOperationalGrandGarage(state)) return state
+  const marketProfile = ['standard', 'premium', 'both'].includes(settings.marketProfile)
+    ? settings.marketProfile
+    : 'both'
+  const maxPurchasePrice = Number.isFinite(settings.maxPurchasePrice)
+    ? settings.maxPurchasePrice
+    : DEFAULT_COMMERCIAL_SETTINGS.maxPurchasePrice
+  const minDiscountPercent = Number.isFinite(settings.minDiscountPercent)
+    ? settings.minDiscountPercent
+    : DEFAULT_COMMERCIAL_SETTINGS.minDiscountPercent
+  const normalizedSettings: CommercialSettings = {
+    enabled: Boolean(settings.enabled),
+    maxPurchasePrice: roundTo(Math.max(5_000, Math.min(100_000, maxPurchasePrice)), 500),
+    minDiscountPercent: Math.round(Math.max(5, Math.min(35, minDiscountPercent))),
+    marketProfile,
+  }
+  return withNotification(
+    {
+      ...state,
+      commercialSettings: normalizedSettings,
+      nextCommercialActionAt: normalizedSettings.enabled
+        ? Math.min(state.nextCommercialActionAt, now + COMMERCIAL_ACTION_DELAY_SECONDS[0] * 1_000)
+        : state.nextCommercialActionAt,
+    },
+    normalizedSettings.enabled
+      ? 'Consigne commerciale enregistrée.'
+      : 'Achats automatiques suspendus.',
+    'neutral',
+    random,
+  )
+}
+
+export const toggleShowroomVehicle = (
+  state: GameState,
+  vehicleId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  if (!hasOperationalGrandGarage(state)) return state
+  const vehicle = state.vehicles.find((item) => item.id === vehicleId)
+  if (!vehicle?.kept) {
+    return withNotification(state, 'Seuls les véhicules de la collection peuvent entrer au showroom.', 'warning', random)
+  }
+  const isExposed = state.showroomVehicleIds.includes(vehicleId)
+  if (!isExposed && state.showroomVehicleIds.length >= SHOWROOM_CAPACITY) {
+    return withNotification(state, `Le showroom est limité à ${SHOWROOM_CAPACITY} véhicules.`, 'warning', random)
+  }
+  return withNotification(
+    {
+      ...state,
+      showroomVehicleIds: isExposed
+        ? state.showroomVehicleIds.filter((id) => id !== vehicleId)
+        : [...state.showroomVehicleIds, vehicleId],
+      showroomOffers: isExposed
+        ? state.showroomOffers.filter((offer) => offer.vehicleId !== vehicleId)
+        : state.showroomOffers,
+      nextShowroomOfferAt: !isExposed && state.showroomVehicleIds.length === 0
+        ? Math.min(state.nextShowroomOfferAt, now + SHOWROOM_OFFER_DELAY_SECONDS[0] * 1_000)
+        : state.nextShowroomOfferAt,
+    },
+    isExposed
+      ? `${vehicle.model} retirée du showroom.`
+      : `${vehicle.model} installée au showroom. Les visiteurs peuvent désormais faire une offre.`,
+    'neutral',
+    random,
+  )
+}
+
+export const acceptShowroomOffer = (
+  state: GameState,
+  offerId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const offer = state.showroomOffers.find((item) => item.id === offerId)
+  const vehicle = offer && state.vehicles.find((item) => item.id === offer.vehicleId)
+  if (!offer || offer.expiresAt <= now || !vehicle || !vehicle.kept) return state
+  const profit = offer.amount - getVehicleInvestment(vehicle)
+  return withNotification(
+    {
+      ...state,
+      cash: state.cash + offer.amount,
+      profitToday: state.profitToday + profit,
+      vehicles: state.vehicles.filter((item) => item.id !== vehicle.id),
+      showroomVehicleIds: state.showroomVehicleIds.filter((id) => id !== vehicle.id),
+      showroomOffers: state.showroomOffers.filter((item) => item.id !== offer.id),
+    },
+    `${vehicle.model} cédée à un visiteur : +${offer.amount.toLocaleString('fr-FR')} € · marge ${profit >= 0 ? '+' : '−'}${Math.abs(profit).toLocaleString('fr-FR')} €.`,
+    profit >= 0 ? 'success' : 'warning',
+    random,
+  )
+}
+
+export const rejectShowroomOffer = (
+  state: GameState,
+  offerId: string,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const offer = state.showroomOffers.find((item) => item.id === offerId)
+  if (!offer) return state
+  return withNotification(
+    {
+      ...state,
+      showroomOffers: state.showroomOffers.filter((item) => item.id !== offerId),
+      nextShowroomOfferAt: Math.min(
+        state.nextShowroomOfferAt,
+        now + randomInteger(360, 600, random) * 1_000,
+      ),
+    },
+    'Proposition visiteur refusée. Le véhicule reste exposé.',
+    'neutral',
+    random,
+  )
+}
+
+const matchesCommercialProfile = (
+  listing: MarketListing,
+  settings: CommercialSettings,
+) => {
+  if (listing.market === 'collector') return false
+  if (settings.marketProfile !== 'both' && listing.market !== settings.marketProfile) return false
+  const discountPercent = ((listing.marketValue - listing.askingPrice) / listing.marketValue) * 100
+  return listing.askingPrice <= settings.maxPurchasePrice
+    && discountPercent >= settings.minDiscountPercent
+}
+
+const advanceCommercial = (
+  state: GameState,
+  now: number,
+  random: RandomSource,
+) => {
+  const salespersonActive = state.staff.some(
+    (employee) => employee.role === 'salesperson' && employee.status === 'active',
+  )
+  if (!salespersonActive || !state.commercialSettings.enabled) return state
+
+  let nextState = state
+  let nextActionAt = state.nextCommercialActionAt
+  let attempts = 0
+  while (nextActionAt <= now && attempts < 12) {
+    attempts += 1
+    const candidate = nextState.listings
+      .filter((listing) => matchesCommercialProfile(listing, nextState.commercialSettings))
+      .filter((listing) => listing.askingPrice <= nextState.cash)
+      .sort((left, right) =>
+        (right.marketValue - right.askingPrice) - (left.marketValue - left.askingPrice),
+      )[0]
+    if (candidate && nextState.vehicles.length < getGarageCapacity(nextState)) {
+      const beforeCount = nextState.vehicles.length
+      nextState = buyListing(nextState, candidate.id, nextActionAt, random)
+      if (nextState.vehicles.length > beforeCount) {
+        const notifications = [...nextState.notifications]
+        const latest = notifications.at(-1)
+        if (latest) {
+          notifications[notifications.length - 1] = {
+            ...latest,
+            message: `Commercial · ${candidate.model} achetée automatiquement à ${candidate.askingPrice.toLocaleString('fr-FR')} €.`,
+          }
+        }
+        nextState = { ...nextState, notifications }
+      }
+    }
+    nextActionAt += randomInteger(
+      COMMERCIAL_ACTION_DELAY_SECONDS[0],
+      COMMERCIAL_ACTION_DELAY_SECONDS[1],
+      random,
+    ) * 1_000
+    if (!candidate || nextState.vehicles.length >= getGarageCapacity(nextState)) break
+  }
+
+  if (nextActionAt <= now) {
+    nextActionAt = now + randomInteger(
+      COMMERCIAL_ACTION_DELAY_SECONDS[0],
+      COMMERCIAL_ACTION_DELAY_SECONDS[1],
+      random,
+    ) * 1_000
+  }
+  return nextActionAt === state.nextCommercialActionAt && nextState === state
+    ? state
+    : { ...nextState, nextCommercialActionAt: nextActionAt }
+}
+
+const advanceShowroom = (
+  state: GameState,
+  now: number,
+  random: RandomSource,
+) => {
+  const validVehicleIds = new Set(
+    state.vehicles.filter((vehicle) => vehicle.kept).map((vehicle) => vehicle.id),
+  )
+  const showroomVehicleIds = state.showroomVehicleIds.filter((id) => validVehicleIds.has(id))
+  let showroomOffers = state.showroomOffers.filter(
+    (offer) => showroomVehicleIds.includes(offer.vehicleId) && offer.expiresAt > now,
+  )
+  let nextShowroomOfferAt = state.nextShowroomOfferAt
+  let nextState = showroomVehicleIds.length === state.showroomVehicleIds.length
+    && showroomOffers.length === state.showroomOffers.length
+    ? state
+    : { ...state, showroomVehicleIds, showroomOffers }
+
+  if (
+    hasOperationalGrandGarage(nextState)
+    && showroomVehicleIds.length > 0
+    && nextShowroomOfferAt <= now
+  ) {
+    const offeredIds = new Set(showroomOffers.map((offer) => offer.vehicleId))
+    const availableIds = showroomVehicleIds.filter((id) => !offeredIds.has(id))
+    if (availableIds.length > 0) {
+      const vehicleId = availableIds[Math.floor(boundedRandom(random) * availableIds.length)]
+      const vehicle = nextState.vehicles.find((item) => item.id === vehicleId)
+      if (vehicle) {
+        const amount = roundTo(
+          getVehicleResaleValue(vehicle) * randomBetween(0.92, 1.13, random),
+          100,
+        )
+        showroomOffers = [...showroomOffers, {
+          id: makeId('showroom-offer', now, random),
+          vehicleId,
+          amount,
+          createdAt: now,
+          expiresAt: now + SHOWROOM_OFFER_DURATION_MS,
+        }]
+        nextState = withNotification(
+          { ...nextState, showroomOffers },
+          `Visiteur showroom · ${amount.toLocaleString('fr-FR')} € proposés pour la ${vehicle.model}.`,
+          'success',
+          random,
+        )
+      }
+    }
+    nextShowroomOfferAt = now + randomInteger(
+      SHOWROOM_OFFER_DELAY_SECONDS[0],
+      SHOWROOM_OFFER_DELAY_SECONDS[1],
+      random,
+    ) * 1_000
+  }
+
+  return nextShowroomOfferAt === nextState.nextShowroomOfferAt
+    ? nextState
+    : { ...nextState, nextShowroomOfferAt }
+}
+
+const assignMechanicJobs = (
+  state: GameState,
+  now: number,
+  random: RandomSource,
+) => {
+  let cash = state.cash
+  let vehicles = state.vehicles
+  const mechanicJobs = [...state.mechanicJobs]
+  const busyEmployeeIds = new Set(mechanicJobs.map((job) => job.employeeId))
+  const busyVehicleIds = new Set(mechanicJobs.map((job) => job.vehicleId))
+  let changed = false
+
+  for (const employee of state.staff.filter(
+    (item) => item.role === 'mechanic' && item.status === 'active' && !busyEmployeeIds.has(item.id),
+  )) {
+    const vehicle = vehicles.find((item) =>
+      !item.kept
+      && !busyVehicleIds.has(item.id)
+      && ['needs-diagnosis', 'needs-decision', 'ready'].includes(item.status),
+    )
+    if (!vehicle) continue
+
+    let job: MechanicJob | null = null
+    if (vehicle.status === 'needs-diagnosis') {
+      job = {
+        employeeId: employee.id,
+        vehicleId: vehicle.id,
+        stage: 'diagnosis',
+        startedAt: now,
+        completesAt: now + MECHANIC_DIAGNOSIS_SECONDS * 1_000,
+      }
+    } else if (vehicle.status === 'needs-decision') {
+      const selectedProblems = vehicle.problems.filter(
+        (problem) => !problem.repaired
+          && (problem.severity === 'critical' || boundedRandom(random) < 0.72),
+      )
+      const fallbackProblem = vehicle.problems.find((problem) => !problem.repaired)
+      const selectedIds = new Set(
+        (selectedProblems.length > 0 ? selectedProblems : fallbackProblem ? [fallbackProblem] : [])
+          .map((problem) => problem.id),
+      )
+      const cost = getRepairCost(vehicle, [...selectedIds])
+      if (selectedIds.size > 0 && cash >= cost) {
+        const durationSeconds = Math.ceil(
+          getRepairDuration(vehicle, [...selectedIds]) * MECHANIC_REPAIR_TIME_FACTOR,
+        )
+        job = {
+          employeeId: employee.id,
+          vehicleId: vehicle.id,
+          stage: 'repair',
+          startedAt: now,
+          completesAt: now + durationSeconds * 1_000,
+        }
+        cash -= cost
+        vehicles = vehicles.map((item) => item.id === vehicle.id
+          ? {
+              ...item,
+              problems: item.problems.map((problem) => ({
+                ...problem,
+                selectedForRepair: !problem.repaired && selectedIds.has(problem.id),
+              })),
+              repairCosts: item.repairCosts + cost,
+              repairsSkipped: item.problems.some(
+                (problem) => !problem.repaired && !selectedIds.has(problem.id),
+              ),
+              repairStartedAt: now,
+              repairCompletesAt: now + durationSeconds * 1_000,
+              status: 'repairing' as const,
+            }
+          : item)
+      }
+    } else if (vehicle.status === 'ready') {
+      job = {
+        employeeId: employee.id,
+        vehicleId: vehicle.id,
+        stage: 'listing',
+        startedAt: now,
+        completesAt: now + MECHANIC_LISTING_SECONDS * 1_000,
+      }
+    }
+
+    if (job) {
+      changed = true
+      mechanicJobs.push(job)
+      busyEmployeeIds.add(employee.id)
+      busyVehicleIds.add(vehicle.id)
+    }
+  }
+
+  return changed ? { ...state, cash, vehicles, mechanicJobs } : state
+}
+
 export const advanceGame = (
   state: GameState,
   now: number,
@@ -696,7 +1203,45 @@ export const advanceGame = (
     ]
   }
 
-  const vehicles = state.vehicles.map((vehicle) => {
+  let mechanicJobs = state.mechanicJobs
+  let vehiclesBeforeTimers = state.vehicles
+  const dueMechanicJobs = mechanicJobs.filter((job) => job.completesAt <= now)
+  if (dueMechanicJobs.length > 0) {
+    changed = true
+    for (const job of dueMechanicJobs) {
+      const vehicle = vehiclesBeforeTimers.find((item) => item.id === job.vehicleId)
+      if (!vehicle) continue
+      if (job.stage === 'diagnosis' && vehicle.status === 'needs-diagnosis') {
+        const problems = selectProblems(vehicle.risk, random)
+        vehiclesBeforeTimers = vehiclesBeforeTimers.map((item) => item.id === vehicle.id
+          ? { ...item, problems, status: 'needs-decision' as const }
+          : item)
+        addNotification(
+          `Garagiste · diagnostic de la ${vehicle.model} terminé avec ${problems.length} poste${problems.length > 1 ? 's' : ''} détecté${problems.length > 1 ? 's' : ''}.`,
+          'neutral',
+        )
+      }
+      if (job.stage === 'listing' && vehicle.status === 'ready' && !vehicle.kept) {
+        const askingPrice = roundTo(getVehicleResaleValue(vehicle) * 0.98, 100)
+        vehiclesBeforeTimers = vehiclesBeforeTimers.map((item) => item.id === vehicle.id
+          ? {
+              ...item,
+              askingPrice,
+              saleChance: getSaleChance(item, askingPrice),
+              nextOfferAt: now + randomInteger(8, 14, random) * 1_000,
+              status: 'listed' as const,
+            }
+          : item)
+        addNotification(
+          `Garagiste · ${vehicle.model} mise en vente automatiquement à ${askingPrice.toLocaleString('fr-FR')} €.`,
+          'neutral',
+        )
+      }
+    }
+    mechanicJobs = mechanicJobs.filter((job) => job.completesAt > now)
+  }
+
+  const vehicles = vehiclesBeforeTimers.map((vehicle) => {
     if (vehicle.status === 'repairing' && vehicle.repairCompletesAt && vehicle.repairCompletesAt <= now) {
       changed = true
       const completedCount = vehicle.problems.filter((problem) => problem.selectedForRepair).length
@@ -787,6 +1332,43 @@ export const advanceGame = (
     }
   }
 
+  let staff = state.staff
+  let salariesPaid = 0
+  let salariesMissed = 0
+  staff = staff.map((employee) => {
+    if (employee.nextPayrollAt > now) return employee
+    const elapsedCycles = Math.floor(
+      (now - employee.nextPayrollAt) / PROPERTY_CHARGE_CYCLE_MS,
+    ) + 1
+    const salaryDue = STAFF_CONFIG[employee.role].salaryPerCycle * elapsedCycles
+    changed = true
+    if (cash >= salaryDue) {
+      cash -= salaryDue
+      salariesPaid += salaryDue
+      return {
+        ...employee,
+        nextPayrollAt: employee.nextPayrollAt + elapsedCycles * PROPERTY_CHARGE_CYCLE_MS,
+      }
+    }
+    salariesMissed += salaryDue
+    return {
+      ...employee,
+      nextPayrollAt: employee.nextPayrollAt + elapsedCycles * PROPERTY_CHARGE_CYCLE_MS,
+      status: 'paused' as const,
+      pausedReason: 'payroll' as const,
+      salaryArrears: employee.salaryArrears + salaryDue,
+    }
+  })
+  if (salariesPaid > 0) {
+    addNotification(`Salaires prélevés : ${salariesPaid.toLocaleString('fr-FR')} €.`, 'neutral')
+  }
+  if (salariesMissed > 0) {
+    addNotification(
+      `Paie insuffisante : ${salariesMissed.toLocaleString('fr-FR')} € placés en arriéré. Les postes concernés sont en pause, personne n’a été supprimé.`,
+      'warning',
+    )
+  }
+
   const activeListings = state.listings.filter((listing) => listing.expiresAt > now)
   if (activeListings.length !== state.listings.length) changed = true
 
@@ -798,10 +1380,15 @@ export const advanceGame = (
         profitDayKey: currentDayKey,
         vehicles,
         properties,
+        staff,
+        mechanicJobs,
         listings: activeListings,
         notifications,
       }
     : state
 
-  return refreshMarkets(nextState, now, random)
+  nextState = refreshMarkets(nextState, now, random)
+  nextState = advanceCommercial(nextState, now, random)
+  nextState = advanceShowroom(nextState, now, random)
+  return assignMechanicJobs(nextState, now, random)
 }

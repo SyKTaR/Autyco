@@ -1,17 +1,24 @@
 import type { GameAction, GameState } from '../types/game'
 import {
   acceptOffer,
+  acceptShowroomOffer,
   acquireProperty,
   advanceGame,
   buyListing,
   diagnoseVehicle,
   ignoreListing,
+  hireStaff,
   listVehicle,
+  payStaffArrears,
   rejectOffer,
+  rejectShowroomOffer,
   skipRepair,
   startRepair,
   startPropertyWorks,
+  toggleShowroomVehicle,
+  toggleStaffStatus,
   toggleVehicleKept,
+  updateCommercialSettings,
 } from './engine'
 
 export const gameReducer = (state: GameState, action: GameAction): GameState => {
@@ -38,6 +45,20 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       return acquireProperty(state, action.offerId, action.now)
     case 'START_PROPERTY_WORKS':
       return startPropertyWorks(state, action.propertyId, action.now)
+    case 'HIRE_STAFF':
+      return hireStaff(state, action.role, action.now)
+    case 'TOGGLE_STAFF_STATUS':
+      return toggleStaffStatus(state, action.employeeId)
+    case 'PAY_STAFF_ARREARS':
+      return payStaffArrears(state, action.employeeId)
+    case 'UPDATE_COMMERCIAL_SETTINGS':
+      return updateCommercialSettings(state, action.settings, action.now)
+    case 'TOGGLE_SHOWROOM_VEHICLE':
+      return toggleShowroomVehicle(state, action.vehicleId, action.now)
+    case 'ACCEPT_SHOWROOM_OFFER':
+      return acceptShowroomOffer(state, action.offerId, action.now)
+    case 'REJECT_SHOWROOM_OFFER':
+      return rejectShowroomOffer(state, action.offerId, action.now)
     case 'DISMISS_NOTIFICATION':
       return {
         ...state,

@@ -26,6 +26,12 @@ export const ReturnSummary = ({ summary, onDismiss, onOpenGarage }: ReturnSummar
     summary.propertiesOpened > 0
       ? `${summary.propertiesOpened} local${summary.propertiesOpened > 1 ? 'ux' : ''} mis en service`
       : null,
+    summary.showroomOffersReceived > 0
+      ? `${summary.showroomOffersReceived} proposition${summary.showroomOffersReceived > 1 ? 's' : ''} au showroom`
+      : null,
+    summary.staffPaused > 0
+      ? `${summary.staffPaused} poste${summary.staffPaused > 1 ? 's' : ''} suspendu${summary.staffPaused > 1 ? 's' : ''} pour paie insuffisante`
+      : null,
     summary.cashDelta !== 0
       ? `Trésorerie ${summary.cashDelta > 0 ? '+' : '−'}${formatMoney(Math.abs(summary.cashDelta))}`
       : null,

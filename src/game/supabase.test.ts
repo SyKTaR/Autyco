@@ -201,6 +201,31 @@ describe('adaptateur Supabase', () => {
     })
   })
 
+  it('transmet la consigne commerciale bornée à la RPC sans timestamp client', async () => {
+    const remoteState = createInitialGame(1_000, () => 0.2)
+    let requestBody: Record<string, unknown> = {}
+    globalThis.fetch = async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify(remoteState), { status: 200 })
+    }
+    const settings = {
+      enabled: true,
+      maxPurchasePrice: 42_000,
+      minDiscountPercent: 18,
+      marketProfile: 'premium' as const,
+    }
+
+    await performRemoteGameAction(configuration, session, {
+      type: 'UPDATE_COMMERCIAL_SETTINGS',
+      settings,
+      now: 999_999_999,
+    })
+
+    assert.equal(requestBody.p_action, 'UPDATE_COMMERCIAL_SETTINGS')
+    assert.deepEqual(requestBody.p_payload, { settings })
+    assert.equal('now' in (requestBody.p_payload as Record<string, unknown>), false)
+  })
+
   it('crée un serveur privé via la RPC et valide son code éphémère', async () => {
     let requestUrl = ''
     let requestBody: Record<string, unknown> = {}
