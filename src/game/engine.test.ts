@@ -21,12 +21,31 @@ import {
   startRepair,
   toggleVehicleKept,
 } from './engine'
-import { PROBLEM_CATALOG } from './catalog'
+import { PROBLEM_CATALOG, VEHICLE_CATALOG } from './catalog'
 import { PROPERTY_CHARGE_CYCLE_MS } from './properties'
 
 const fixedRandom = () => 0.1
 
 describe('boucle de jeu', () => {
+  it('propose un catalogue étoffé sans diluer les quotas de chaque gamme', () => {
+    assert.equal(new Set(VEHICLE_CATALOG.map((vehicle) => vehicle.id)).size, VEHICLE_CATALOG.length)
+    assert.deepEqual(
+      Object.fromEntries(MARKET_TIERS.map((market) => [
+        market,
+        VEHICLE_CATALOG.filter((vehicle) => vehicle.market === market).length,
+      ])),
+      { standard: 12, premium: 8, collector: 8 },
+    )
+    for (const market of MARKET_TIERS) {
+      const catalogSize = VEHICLE_CATALOG.filter((vehicle) => vehicle.market === market).length
+      assert.ok(catalogSize > MARKET_CONFIG[market].target)
+    }
+    assert.deepEqual(MARKET_CONFIG.collector, {
+      target: 2,
+      refreshSeconds: [5_400, 9_000],
+    })
+  })
+
   it('génère trois marchés distincts avec leurs volumes et cadences propres', () => {
     const game = createInitialGame(1_000, fixedRandom)
     assert.equal(game.listings.length, 13)

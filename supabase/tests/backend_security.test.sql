@@ -1,6 +1,6 @@
 begin;
 
-select plan(28);
+select plan(31);
 
 select has_table('public', 'players', 'players existe');
 select has_table('public', 'market_listings', 'market_listings existe');
@@ -36,6 +36,22 @@ select has_column(
   'vehicle_problems',
   'selected_for_repair',
   'la sélection atelier est persistée pendant les travaux'
+);
+
+select is(
+  (select count(*)::integer from private.vehicle_templates where market_tier = 'standard'),
+  12,
+  'le catalogue Occasion contient douze modèles'
+);
+select is(
+  (select count(*)::integer from private.vehicle_templates where market_tier = 'premium'),
+  8,
+  'le catalogue Premium contient huit modèles'
+);
+select is(
+  (select count(*)::integer from private.vehicle_templates where market_tier = 'collector'),
+  8,
+  'le catalogue Collection contient huit modèles'
 );
 
 select is(
