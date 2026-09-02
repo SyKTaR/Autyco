@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { readableError, useAuth } from '../backend/AuthContext'
 import { accentPresets, useAccentTheme, type ColorScheme } from '../theme/AccentTheme'
+import { ConnectionStatus } from './ConnectionStatus'
 import { RecoveryCodeDisplay } from './RecoveryCodeDisplay'
 
 const colorSchemes: Array<{ id: ColorScheme; label: string; description: string }> = [
@@ -44,6 +45,8 @@ export const SettingsView = () => {
           Accent actif<br /><span className="mt-0.5 inline-block text-base font-semibold text-signal-hover">{selectedAccent?.label}</span>
         </p>
       </header>
+
+      <ConnectionStatus />
 
       <section className="panel mt-8 overflow-hidden" aria-labelledby="appearance-title">
         <div className="grid gap-3 p-5 sm:grid-cols-[1fr_auto] sm:items-end sm:p-6">

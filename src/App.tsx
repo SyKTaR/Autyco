@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AppHeader, type AppView } from './components/AppHeader'
-import { ConnectionStatus } from './components/ConnectionStatus'
 import { CompetitionView, type ServerInviteCode } from './components/CompetitionView'
 import { GarageView } from './components/GarageView'
 import { MarketView } from './components/MarketView'
@@ -8,7 +7,6 @@ import { Notifications } from './components/Notifications'
 import { RealEstateView } from './components/RealEstateView'
 import { ReturnSummary } from './components/ReturnSummary'
 import { SettingsView } from './components/SettingsView'
-import { SummaryStrip } from './components/SummaryStrip'
 import { useGame } from './context/GameContext'
 import { getGarageActionCount, getPropertyActionCount } from './game/returnSummary'
 
@@ -42,9 +40,7 @@ function App() {
       <a className="skip-link" href="#main-content">
         Aller au contenu
       </a>
-      <AppHeader view={view} onViewChange={setView} attention={attention} />
-      <ConnectionStatus />
-      <SummaryStrip state={state} />
+      <AppHeader view={view} onViewChange={setView} attention={attention} state={state} />
       {returnSummary && (
         <ReturnSummary
           summary={returnSummary}
