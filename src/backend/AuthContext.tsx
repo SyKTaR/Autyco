@@ -13,7 +13,9 @@ import {
   closePrivateServer,
   createPrivateServer,
   createPlayerIdentity,
+  fetchAuthUser,
   fetchCurrentPrivateServer,
+  fetchExistingPlayerIdentity,
   fetchPlayerIdentity,
   fetchPrivateServerLeaderboard,
   fetchRemoteGame,
@@ -23,12 +25,16 @@ import {
   loadSupabaseConfiguration,
   performRemoteGameAction,
   recoverPlayer,
+  recoverSessionFromUrl,
   refreshAuthSession,
+  requestRecoveryEmailOtp,
   rotatePlayerRecoveryCode,
   rotatePrivateServerInvite,
   signInAnonymously,
   signOutSession,
   storeSession,
+  updateRecoveryEmail,
+  verifyRecoveryEmailOtp,
   type AuthSession,
   type PlayerIdentity,
   type PrivateServerLeaderboard,
@@ -62,6 +68,10 @@ interface AuthContextValue {
   notice: string | null
   createPlayer: (garageName: string, playerName: string) => Promise<void>
   restorePlayer: (recoveryCode: string) => Promise<void>
+  linkRecoveryEmail: (email: string) => Promise<void>
+  refreshRecoveryEmail: () => Promise<void>
+  requestEmailLogin: (email: string) => Promise<void>
+  verifyEmailLogin: (email: string, token: string) => Promise<void>
   completeSetup: () => void
   getRecoveryCode: () => Promise<string | null>
   rotateRecoveryCode: () => Promise<string>
@@ -84,6 +94,25 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const readableError = (error: unknown) =>
   error instanceof Error ? error.message : 'Une erreur inattendue est survenue.'
 
+const emailRedirectTo = () =>
+  typeof window === 'undefined' ? undefined : `${window.location.origin}${window.location.pathname}`
+
+const hasAuthCallback = (url: URL) => {
+  const fragment = new URLSearchParams(url.hash.replace(/^#/, ''))
+  return fragment.has('access_token')
+    || fragment.has('error_description')
+    || url.searchParams.has('token_hash')
+}
+
+const clearAuthCallback = (url: URL) => {
+  if (typeof window === 'undefined' || !hasAuthCallback(url)) return
+  const cleanedUrl = new URL(url)
+  cleanedUrl.hash = ''
+  cleanedUrl.searchParams.delete('token_hash')
+  cleanedUrl.searchParams.delete('type')
+  window.history.replaceState(null, '', `${cleanedUrl.pathname}${cleanedUrl.search}`)
+}
+
 export const AuthProvider = ({ children }: PropsWithChildren) => {
   const configuration = useMemo(loadSupabaseConfiguration, [])
   const [status, setStatus] = useState<AuthStatus>('initializing')
@@ -93,7 +122,12 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const [setupKind, setSetupKind] = useState<SetupKind | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const sessionRef = useRef<AuthSession | null>(null)
-  const initializationRef = useRef<Promise<AuthSession> | null>(null)
+  const initializationRef = useRef<Promise<{
+    session: AuthSession
+    fromEmail: boolean
+    callbackFailed: boolean
+  }> | null>(null)
+  const initializationFromEmailRef = useRef(false)
   const recoverySessionRef = useRef<AuthSession | null>(null)
 
   const updateSession = useCallback((nextSession: AuthSession | null) => {
@@ -113,26 +147,57 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       }
 
       const storedSession = loadStoredSession()
-      if (!storedSession) {
+      const callbackUrl = typeof window === 'undefined' ? null : new URL(window.location.href)
+      const authCallback = callbackUrl ? hasAuthCallback(callbackUrl) : false
+      const initializationPending = Boolean(initializationRef.current)
+      if (!storedSession && !authCallback && !initializationPending) {
         if (active) setStatus('signed-out')
         return
       }
 
       try {
-        initializationRef.current ??= refreshAuthSession(
-          configuration,
-          storedSession.refreshToken,
-        )
-        const refreshed = await initializationRef.current
-        const storedIdentity = await fetchPlayerIdentity(configuration, refreshed)
+        if (authCallback) initializationFromEmailRef.current = true
+        if (callbackUrl && authCallback) clearAuthCallback(callbackUrl)
+        initializationRef.current ??= (async () => {
+          let callbackFailed = false
+          if (callbackUrl && authCallback) {
+            try {
+              const redirectedSession = await recoverSessionFromUrl(configuration, callbackUrl)
+              if (redirectedSession) {
+                return { session: redirectedSession, fromEmail: true, callbackFailed: false }
+              }
+            } catch {
+              callbackFailed = true
+            }
+          }
+          if (storedSession) {
+            return {
+              session: await refreshAuthSession(configuration, storedSession.refreshToken),
+              fromEmail: false,
+              callbackFailed,
+            }
+          }
+          throw new SupabaseRequestError('Ce lien email est invalide ou expiré.', 401)
+        })()
+        const initialized = await initializationRef.current
+        const storedIdentity = await (
+          initialized.fromEmail ? fetchExistingPlayerIdentity : fetchPlayerIdentity
+        )(configuration, initialized.session)
         if (!active) return
-        updateSession(refreshed)
+        updateSession(initialized.session)
         setIdentity(storedIdentity)
-        setRecoveryCode(loadStoredRecoveryCode(refreshed.user.id))
+        setRecoveryCode(loadStoredRecoveryCode(initialized.session.user.id))
+        setNotice(
+          initialized.fromEmail
+            ? 'Connexion par email réussie.'
+            : initialized.callbackFailed
+              ? 'Le lien email n’a pas pu être validé. Ta session locale reste active.'
+              : null,
+        )
         setStatus('authenticated')
       } catch (error) {
         if (!active) return
-        if (error instanceof SupabaseRequestError && error.status === 0) {
+        if (error instanceof SupabaseRequestError && error.status === 0 && storedSession) {
           sessionRef.current = storedSession
           setSession(storedSession)
           setRecoveryCode(loadStoredRecoveryCode(storedSession.user.id))
@@ -141,7 +206,11 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         } else {
           updateSession(null)
           setIdentity(null)
-          setNotice('Cette session n’est plus active. Restaure ta partie avec ton code.')
+          setNotice(
+            initializationFromEmailRef.current
+              ? 'Ce lien email est invalide ou expiré. Demande un nouvel envoi.'
+              : 'Cette session n’est plus active. Restaure ta partie avec ton code ou ton email.',
+          )
           setStatus('signed-out')
         }
       }
@@ -284,6 +353,57 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     }
   }, [configuration, getValidSession, updateSession])
 
+  const linkRecoveryEmail = useCallback(async (email: string) => {
+    if (!configuration) throw new Error('Supabase n’est pas configuré.')
+    await runAuthenticated(async (validSession) => {
+      const user = await updateRecoveryEmail(
+        configuration,
+        validSession,
+        email,
+        emailRedirectTo(),
+      )
+      updateSession({ ...validSession, user })
+    })
+  }, [configuration, runAuthenticated, updateSession])
+
+  const refreshRecoveryEmail = useCallback(async () => {
+    if (!configuration) throw new Error('Supabase n’est pas configuré.')
+    await runAuthenticated(async (validSession) => {
+      const user = await fetchAuthUser(configuration, validSession)
+      updateSession({ ...validSession, user })
+    })
+  }, [configuration, runAuthenticated, updateSession])
+
+  const requestEmailLogin = useCallback(async (email: string) => {
+    if (!configuration) throw new Error('Supabase n’est pas configuré.')
+    await requestRecoveryEmailOtp(configuration, email, emailRedirectTo())
+  }, [configuration])
+
+  const verifyEmailLogin = useCallback(async (email: string, token: string) => {
+    if (!configuration) throw new Error('Supabase n’est pas configuré.')
+    const restoredSession = await verifyRecoveryEmailOtp(configuration, email, token)
+    try {
+      const restoredIdentity = await fetchExistingPlayerIdentity(configuration, restoredSession)
+      updateSession(restoredSession)
+      setIdentity(restoredIdentity)
+      setRecoveryCode(loadStoredRecoveryCode(restoredSession.user.id))
+      setSetupKind(null)
+      setNotice('Connexion par email réussie.')
+      setStatus('authenticated')
+    } catch {
+      try {
+        await signOutSession(configuration, restoredSession)
+      } catch {
+        // Cette session n'est jamais persistée si elle n'appartient pas à un joueur AUTYCO.
+      }
+      throw new SupabaseRequestError(
+        'Ce code est invalide ou expiré. Demande un nouvel email.',
+        400,
+        'invalid_email_otp',
+      )
+    }
+  }, [configuration, updateSession])
+
   const rotateRecoveryCode = useCallback(async () => {
     if (!configuration) throw new Error('Supabase n’est pas configuré.')
     const nextCode = await runAuthenticated((validSession) =>
@@ -376,6 +496,10 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     notice,
     createPlayer,
     restorePlayer,
+    linkRecoveryEmail,
+    refreshRecoveryEmail,
+    requestEmailLogin,
+    verifyEmailLogin,
     completeSetup,
     getRecoveryCode,
     rotateRecoveryCode,
@@ -393,7 +517,8 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     getPrivateServerLeaderboard: getServerLeaderboard,
   }), [
     status, configuration, session, identity, recoveryCode, setupKind, notice,
-    createPlayer, restorePlayer, completeSetup, getRecoveryCode, rotateRecoveryCode,
+    createPlayer, restorePlayer, linkRecoveryEmail, refreshRecoveryEmail,
+    requestEmailLogin, verifyEmailLogin, completeSetup, getRecoveryCode, rotateRecoveryCode,
     signOut, useLocalMode, showEntry, getRemoteGame, sendRemoteAction,
     getCurrentPrivateServer, createServer, joinServer, rotateServerInvite,
     leaveServer, closeServer, getServerLeaderboard,

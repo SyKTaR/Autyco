@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { readableError, useAuth } from '../backend/AuthContext'
 
-type EntryMode = 'create' | 'restore'
+type EntryMode = 'create' | 'restore' | 'email'
 
 const identityPattern = /^[\p{L}\p{N}][\p{L}\p{N} .&'’-]*$/u
 
@@ -22,12 +22,24 @@ const formatRecoveryInput = (rawValue: string) => {
   return compact ? `GG-${groups.join('-')}` : ''
 }
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export const AuthScreen = () => {
-  const { createPlayer, restorePlayer, useLocalMode, notice } = useAuth()
+  const {
+    createPlayer,
+    restorePlayer,
+    requestEmailLogin,
+    verifyEmailLogin,
+    useLocalMode,
+    notice,
+  } = useAuth()
   const [mode, setMode] = useState<EntryMode>('create')
   const [garageName, setGarageName] = useState('')
   const [playerName, setPlayerName] = useState('')
   const [recoveryCode, setRecoveryCode] = useState('')
+  const [email, setEmail] = useState('')
+  const [emailOtp, setEmailOtp] = useState('')
+  const [emailSent, setEmailSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -43,15 +55,33 @@ export const AuthScreen = () => {
         setError(validationError)
         return
       }
-    } else if (recoveryCode.replace(/[^0-9A-F]/g, '').length !== 32) {
+    } else if (mode === 'restore' && recoveryCode.replace(/[^0-9A-F]/g, '').length !== 32) {
       setError('Le code doit contenir huit groupes de quatre caractères.')
       return
+    } else if (mode === 'email') {
+      const normalizedEmail = email.trim().toLowerCase()
+      if (normalizedEmail.length > 254 || !emailPattern.test(normalizedEmail)) {
+        setError('Saisis une adresse email valide.')
+        return
+      }
+      if (emailSent && emailOtp.replace(/\D/g, '').length !== 6) {
+        setError('Le code email doit contenir six chiffres.')
+        return
+      }
     }
 
     setSubmitting(true)
     try {
-      if (mode === 'create') await createPlayer(garageName, playerName)
-      else await restorePlayer(recoveryCode)
+      if (mode === 'create') {
+        await createPlayer(garageName, playerName)
+      } else if (mode === 'restore') {
+        await restorePlayer(recoveryCode)
+      } else if (emailSent) {
+        await verifyEmailLogin(email, emailOtp)
+      } else {
+        await requestEmailLogin(email)
+        setEmailSent(true)
+      }
     } catch (submitError) {
       setError(readableError(submitError))
     } finally {
@@ -62,6 +92,10 @@ export const AuthScreen = () => {
   const changeMode = (nextMode: EntryMode) => {
     setMode(nextMode)
     setError(null)
+    if (nextMode !== 'email') {
+      setEmailSent(false)
+      setEmailOtp('')
+    }
   }
 
   return (
@@ -77,14 +111,14 @@ export const AuthScreen = () => {
         </div>
 
         <div className="panel overflow-hidden">
-          <div className="m-2 grid grid-cols-2 rounded-full bg-paper/75 p-1" aria-label="Choix du parcours">
+          <div className="m-2 grid grid-cols-3 rounded-full bg-paper/75 p-1" aria-label="Choix du parcours">
             <button
               type="button"
               className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'create' ? 'bg-drive text-on-drive shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
               aria-pressed={mode === 'create'}
               onClick={() => changeMode('create')}
             >
-              Nouveau garage
+              Nouveau
             </button>
             <button
               type="button"
@@ -92,7 +126,15 @@ export const AuthScreen = () => {
               aria-pressed={mode === 'restore'}
               onClick={() => changeMode('restore')}
             >
-              Restaurer
+              Code
+            </button>
+            <button
+              type="button"
+              className={`min-h-12 rounded-full px-3 text-sm font-semibold transition-colors ${mode === 'email' ? 'bg-drive text-on-drive shadow-card' : 'text-muted hover:bg-soft hover:text-ink'}`}
+              aria-pressed={mode === 'email'}
+              onClick={() => changeMode('email')}
+            >
+              Email
             </button>
           </div>
 
@@ -133,7 +175,7 @@ export const AuthScreen = () => {
                     />
                   </label>
                 </>
-              ) : (
+              ) : mode === 'restore' ? (
                 <label className="block">
                   <span className="data-label text-ink">Code de récupération</span>
                   <input
@@ -152,6 +194,55 @@ export const AuthScreen = () => {
                     Colle le code complet. Les tirets et les espaces sont remis en forme automatiquement.
                   </span>
                 </label>
+              ) : emailSent ? (
+                <div>
+                  <p className="text-sm leading-6 text-muted">
+                    Si <strong className="break-all font-semibold text-ink">{email.trim().toLowerCase()}</strong> est lié à un garage, l’email contient un lien de connexion ou un code à six chiffres.
+                  </p>
+                  <label className="mt-5 block">
+                    <span className="data-label text-ink">Code reçu par email</span>
+                    <input
+                      required
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={emailOtp}
+                      onChange={(event) => setEmailOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className="form-input mt-2 min-h-16 font-mono text-xl font-bold tracking-[0.3em]"
+                      placeholder="000000"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="text-action mt-3 -ml-3 text-muted hover:text-ink"
+                    onClick={() => {
+                      setEmailSent(false)
+                      setEmailOtp('')
+                      setError(null)
+                    }}
+                  >
+                    Modifier l’adresse
+                  </button>
+                </div>
+              ) : (
+                <label className="block">
+                  <span className="data-label text-ink">Email de récupération</span>
+                  <input
+                    required
+                    type="email"
+                    autoComplete="email"
+                    maxLength={254}
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    className="form-input mt-2 min-h-14 text-lg"
+                    placeholder="toi@exemple.fr"
+                    aria-describedby="email-help"
+                  />
+                  <span id="email-help" className="mt-3 block text-sm leading-6 text-muted">
+                    L’adresse doit avoir été confirmée auparavant dans les réglages du garage.
+                  </span>
+                </label>
               )}
 
               {(error || notice) && (
@@ -162,8 +253,18 @@ export const AuthScreen = () => {
 
               <button type="submit" className="button-primary w-full sm:w-auto" disabled={submitting}>
                 {submitting
-                  ? mode === 'create' ? 'Création du garage…' : 'Restauration en cours…'
-                  : mode === 'create' ? 'Créer mon garage' : 'Restaurer ma partie'}
+                  ? mode === 'create'
+                    ? 'Création du garage…'
+                    : mode === 'email' && !emailSent
+                      ? 'Envoi en cours…'
+                      : 'Connexion en cours…'
+                  : mode === 'create'
+                    ? 'Créer mon garage'
+                    : mode === 'restore'
+                      ? 'Restaurer ma partie'
+                      : emailSent
+                        ? 'Valider le code'
+                        : 'Recevoir un email'}
               </button>
             </form>
 
@@ -178,7 +279,7 @@ export const AuthScreen = () => {
             </div>
           </div>
         </div>
-        <p className="mt-5 text-center text-sm text-muted">Aucun email ni mot de passe requis.</p>
+        <p className="mt-5 text-center text-sm text-muted">L’email reste facultatif. Le code de récupération fonctionne toujours.</p>
       </section>
     </main>
   )

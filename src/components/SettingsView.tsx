@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { readableError, useAuth } from '../backend/AuthContext'
 import { accentPresets, useAccentTheme, type ColorScheme } from '../theme/AccentTheme'
 import { ConnectionStatus } from './ConnectionStatus'
@@ -15,6 +15,47 @@ export const SettingsView = () => {
   const [loadingCode, setLoadingCode] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmRotation, setConfirmRotation] = useState(false)
+  const currentAuthUser = auth.session?.user
+  const currentEmail = currentAuthUser?.email
+  const pendingEmail = currentAuthUser?.pendingEmail
+  const emailConfirmed = Boolean(currentEmail && currentAuthUser?.emailConfirmedAt && !pendingEmail)
+  const [email, setEmail] = useState(pendingEmail ?? currentEmail ?? '')
+  const [editingEmail, setEditingEmail] = useState(!currentEmail && !pendingEmail)
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailMessage, setEmailMessage] = useState<string | null>(null)
+  const [emailHasError, setEmailHasError] = useState(false)
+
+  const submitEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setEmailMessage(null)
+    setEmailHasError(false)
+    setEmailBusy(true)
+    try {
+      await auth.linkRecoveryEmail(email)
+      setEditingEmail(false)
+      setEmailMessage('Email envoyé. Ouvre le lien de confirmation reçu pour terminer.')
+    } catch (submitError) {
+      setEmailHasError(true)
+      setEmailMessage(readableError(submitError))
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
+  const refreshEmail = async () => {
+    setEmailMessage(null)
+    setEmailHasError(false)
+    setEmailBusy(true)
+    try {
+      await auth.refreshRecoveryEmail()
+      setEmailMessage('Statut actualisé.')
+    } catch (refreshError) {
+      setEmailHasError(true)
+      setEmailMessage(readableError(refreshError))
+    } finally {
+      setEmailBusy(false)
+    }
+  }
 
   const rotate = async () => {
     setError(null)
@@ -140,11 +181,92 @@ export const SettingsView = () => {
             Retirer cette partie de l’appareil
           </button>
           <p className="mt-2 max-w-[42ch] text-sm leading-6 text-muted">
-            La sauvegarde serveur n’est pas supprimée. Il faudra le code pour la récupérer ici.
+            La sauvegarde serveur n’est pas supprimée. Il faudra le code ou un email confirmé pour la récupérer ici.
           </p>
         </section>
 
-        <section aria-labelledby="recovery-title">
+        <div className="space-y-12">
+          <section aria-labelledby="email-recovery-title">
+            <p className="eyebrow">Accès de secours</p>
+            <h2 id="email-recovery-title" className="mt-2 font-display text-3xl font-semibold tracking-[-0.025em]">Email de récupération</h2>
+            <p className="mt-3 max-w-[54ch] text-sm leading-6 text-muted">
+              Facultatif. Une fois confirmé, il permet de retrouver exactement ce garage sans le code de récupération.
+            </p>
+
+            {!auth.session ? (
+              <p className="mt-5 border-y border-line py-5 text-sm leading-6 text-muted">
+                Connecte une partie serveur pour ajouter un email de récupération.
+              </p>
+            ) : (currentEmail || pendingEmail) && !editingEmail ? (
+              <div className="mt-5 border-y border-line py-5">
+                <dl className="grid gap-3 sm:grid-cols-[8rem_1fr]">
+                  <dt className="data-label">Adresse</dt>
+                  <dd className="min-w-0 break-all font-semibold">{pendingEmail ?? currentEmail}</dd>
+                  <dt className="data-label">Statut</dt>
+                  <dd className={`font-semibold ${emailConfirmed ? 'text-signal-hover' : 'text-warning'}`}>
+                    {emailConfirmed ? 'Confirmé — connexion disponible' : 'Confirmation en attente'}
+                  </dd>
+                </dl>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => {
+                      setEmail(pendingEmail ?? currentEmail ?? '')
+                      setEditingEmail(true)
+                      setEmailMessage(null)
+                      setEmailHasError(false)
+                    }}
+                  >
+                    Changer l’email
+                  </button>
+                  {!emailConfirmed && (
+                    <button type="button" className="text-action" disabled={emailBusy} onClick={() => void refreshEmail()}>
+                      {emailBusy ? 'Actualisation…' : 'J’ai confirmé l’email'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <form className="mt-5" onSubmit={submitEmail} noValidate>
+                <label className="block">
+                  <span className="data-label text-ink">Adresse email</span>
+                  <input
+                    required
+                    type="email"
+                    autoComplete="email"
+                    maxLength={254}
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    className="form-input mt-2 min-h-14 text-base"
+                    placeholder="toi@exemple.fr"
+                  />
+                </label>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="submit" className="button-primary" disabled={emailBusy}>
+                    {emailBusy ? 'Envoi…' : currentEmail || pendingEmail ? 'Confirmer le changement' : 'Lier cet email'}
+                  </button>
+                  {(currentEmail || pendingEmail) && (
+                    <button type="button" className="button-secondary" onClick={() => setEditingEmail(false)}>
+                      Annuler
+                    </button>
+                  )}
+                </div>
+              </form>
+            )}
+
+            {emailMessage && (
+              <p
+                className={`mt-4 text-sm font-semibold leading-6 ${emailHasError ? 'text-warning' : 'text-muted'}`}
+                role={emailHasError ? 'alert' : 'status'}
+                aria-live={emailHasError ? 'assertive' : 'polite'}
+              >
+                {emailMessage}
+              </p>
+            )}
+          </section>
+
+          <section aria-labelledby="recovery-title">
           <p className="eyebrow">Clé de transfert</p>
           <h2 id="recovery-title" className="mt-2 font-display text-3xl font-semibold tracking-[-0.025em]">Code de récupération</h2>
           <p className="mt-3 max-w-[54ch] text-sm leading-6 text-muted">
@@ -191,7 +313,8 @@ export const SettingsView = () => {
               <button type="button" className="button-secondary" onClick={() => setConfirmRotation(true)}>Générer un nouveau code</button>
             )}
           </div>
-        </section>
+          </section>
+        </div>
       </div>
     </main>
   )

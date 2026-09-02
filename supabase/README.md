@@ -62,24 +62,32 @@ constitue pas, à elle seule, une limitation globale par adresse IP.
 3. Appliquer les migrations dans l'ordre (`202609010001_backend_foundation.sql`,
    `202609010002_anonymous_player_identity.sql`, `202609010003_fix_pgcrypto_search_path.sql`,
    `202609010004_private_servers.sql`, puis les migrations datées du 2 septembre dans leur ordre
-   numérique jusqu’à `202609020004_empire.sql`) avec le SQL Editor, ou installer la CLI Supabase
+   numérique jusqu’à `202609020005_email_recovery.sql`) avec le SQL Editor, ou installer la CLI Supabase
    puis exécuter `supabase link --project-ref <PROJECT_REF>` et `supabase db push`.
-4. Dans **Authentication → Providers → Anonymous Sign-Ins**, activer les connexions anonymes. Le
-   provider Email n'est pas utilisé par Garage Game.
-5. Copier `.env.example` vers `.env.local`, puis renseigner uniquement l’URL et la clé publique
+4. Dans **Authentication → Providers**, activer les connexions anonymes ainsi que le provider Email.
+   Activer aussi le linking manuel des identités, nécessaire pour convertir une session anonyme en
+   compte email sans changer son UUID.
+5. Dans **Authentication → URL Configuration**, déclarer l’URL publique de l’application comme Site
+   URL et comme redirect URL autorisée. Le client sait traiter le fragment de session d’un lien
+   magique et, si un template personnalisé emploie `{{ .Token }}`, le code OTP à six chiffres.
+6. Copier `.env.example` vers `.env.local`, puis renseigner uniquement l’URL et la clé publique
    publishable/anon du projet.
-6. Redémarrer Vite après toute modification des variables `VITE_*`.
+7. Redémarrer Vite après toute modification des variables `VITE_*`.
+
+La migration `202609020005_email_recovery.sql` ajoute un quota applicatif avant envoi ou
+vérification email. La table privée ne contient que le SHA-256 de l’adresse normalisée, jamais
+l’adresse elle-même. Ce quota complète les limites natives de Supabase Auth ; il ne les remplace pas.
 
 Ne pas exécuter le fichier `rollback/202609010001_backend_foundation_down.sql` sauf retour arrière
 délibéré : il supprime toutes les données Garage Game créées par cette migration.
 
 ## Vérifications locales prévues
 
-- `npm test` vérifie l’adaptateur REST/Auth anonyme, les contrats des RPC d'identité, l’absence de
-  timestamp client dans une action critique et l’isolation des caches par compte.
+- `npm test` vérifie l’adaptateur REST/Auth anonyme et email, les contrats des RPC d'identité,
+  l’absence de timestamp client dans une action critique et l’isolation des caches par compte.
 - `npm run build` vérifie l’intégration React/TypeScript.
-- Après installation de la CLI et démarrage de Supabase local : `supabase test db` exécute
-  `tests/backend_security.test.sql` pour contrôler RLS, grants et confinement des fonctions
+- Après installation de la CLI et démarrage de Supabase local : `supabase test db` exécute les
+  fichiers pgTAP de `tests/` pour contrôler RLS, quotas, grants et confinement des fonctions
   privilégiées.
 
 Le parcours réel inscription → achat → déconnexion → reconnexion exige un projet Supabase et ne peut

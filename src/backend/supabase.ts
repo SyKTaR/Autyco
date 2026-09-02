@@ -9,6 +9,10 @@ export interface SupabaseConfiguration {
 export interface AuthUser {
   id: string
   isAnonymous: boolean
+  email?: string
+  pendingEmail?: string
+  emailConfirmedAt?: string
+  emailChangeSentAt?: string
 }
 
 export interface AuthSession {
@@ -18,16 +22,21 @@ export interface AuthSession {
   user: AuthUser
 }
 
+interface AuthUserApiResponse {
+  id?: string
+  email?: string
+  new_email?: string
+  email_confirmed_at?: string
+  email_change_sent_at?: string
+  is_anonymous?: boolean
+}
+
 interface AuthApiResponse {
   access_token?: string
   refresh_token?: string
   expires_in?: number
   expires_at?: number
-  user?: {
-    id?: string
-    email?: string
-    is_anonymous?: boolean
-  }
+  user?: AuthUserApiResponse
 }
 
 export interface PlayerIdentity {
@@ -75,6 +84,12 @@ export interface PrivateServerLeaderboard {
 
 interface RecoveryApiResponse extends Partial<PlayerIdentityWithRecovery> {
   ok?: boolean
+  error?: string
+}
+
+interface EmailAuthAttemptResponse {
+  ok?: boolean
+  rateLimited?: boolean
   error?: string
 }
 
@@ -205,11 +220,31 @@ const request = async <T>(
   return body as T
 }
 
+const authUserFromResponse = (response: AuthUserApiResponse): AuthUser | null => {
+  if (typeof response.id !== 'string') return null
+  return {
+    id: response.id,
+    isAnonymous: response.is_anonymous ?? !response.email,
+    ...(typeof response.email === 'string' && response.email
+      ? { email: response.email }
+      : {}),
+    ...(typeof response.new_email === 'string' && response.new_email
+      ? { pendingEmail: response.new_email }
+      : {}),
+    ...(typeof response.email_confirmed_at === 'string'
+      ? { emailConfirmedAt: response.email_confirmed_at }
+      : {}),
+    ...(typeof response.email_change_sent_at === 'string'
+      ? { emailChangeSentAt: response.email_change_sent_at }
+      : {}),
+  }
+}
+
 const sessionFromResponse = (response: AuthApiResponse): AuthSession | null => {
   const accessToken = response.access_token
   const refreshToken = response.refresh_token
-  const userId = response.user?.id
-  if (!accessToken || !refreshToken || !userId) return null
+  const user = response.user ? authUserFromResponse(response.user) : null
+  if (!accessToken || !refreshToken || !user) return null
 
   const expiresAt = response.expires_at
     ? response.expires_at * 1_000
@@ -218,10 +253,7 @@ const sessionFromResponse = (response: AuthApiResponse): AuthSession | null => {
     accessToken,
     refreshToken,
     expiresAt,
-    user: {
-      id: userId,
-      isAnonymous: response.user?.is_anonymous ?? !response.user?.email,
-    },
+    user,
   }
 }
 
@@ -361,6 +393,22 @@ export const fetchPlayerIdentity = async (
   return response
 }
 
+export const fetchExistingPlayerIdentity = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+) => {
+  const response = await request<unknown>(
+    configuration,
+    '/rest/v1/rpc/get_existing_player_identity',
+    { method: 'POST', body: '{}' },
+    session.accessToken,
+  )
+  if (!isPlayerIdentity(response)) {
+    throw new SupabaseRequestError('Supabase a renvoyé une identité invalide.', 502)
+  }
+  return response
+}
+
 export const rotatePlayerRecoveryCode = async (
   configuration: SupabaseConfiguration,
   session: AuthSession,
@@ -400,6 +448,159 @@ export const recoverPlayer = async (
     )
   }
   return identityWithRecoveryFromResponse(response)
+}
+
+const reserveEmailAuthAttempt = async (
+  configuration: SupabaseConfiguration,
+  email: string,
+  action: 'send' | 'verify',
+  accessToken?: string,
+) => {
+  const response = await request<EmailAuthAttemptResponse>(
+    configuration,
+    '/rest/v1/rpc/reserve_email_auth_attempt',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        p_email: email.trim().toLowerCase(),
+        p_action: action,
+      }),
+    },
+    accessToken,
+  )
+  if (response?.ok) return
+  if (response?.rateLimited) {
+    throw new SupabaseRequestError(
+      'Trop de tentatives. Réessaie dans 15 minutes.',
+      429,
+      'email_auth_rate_limited',
+    )
+  }
+  throw new SupabaseRequestError(
+    response?.error ?? 'Cette adresse email ne peut pas être utilisée.',
+    400,
+    'invalid_email',
+  )
+}
+
+const pathWithRedirect = (path: string, redirectTo?: string) =>
+  redirectTo ? `${path}?redirect_to=${encodeURIComponent(redirectTo)}` : path
+
+export const fetchAuthUser = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+) => {
+  const response = await request<AuthUserApiResponse>(
+    configuration,
+    '/auth/v1/user',
+    { method: 'GET' },
+    session.accessToken,
+  )
+  const user = authUserFromResponse(response)
+  if (!user) throw new SupabaseRequestError('Supabase a renvoyé un compte invalide.', 502)
+  return user
+}
+
+export const updateRecoveryEmail = async (
+  configuration: SupabaseConfiguration,
+  session: AuthSession,
+  email: string,
+  redirectTo?: string,
+) => {
+  const normalizedEmail = email.trim().toLowerCase()
+  await reserveEmailAuthAttempt(configuration, normalizedEmail, 'send', session.accessToken)
+  const response = await request<AuthUserApiResponse>(
+    configuration,
+    pathWithRedirect('/auth/v1/user', redirectTo),
+    { method: 'PUT', body: JSON.stringify({ email: normalizedEmail }) },
+    session.accessToken,
+  )
+  const user = authUserFromResponse(response)
+  if (!user) throw new SupabaseRequestError('Supabase a renvoyé un compte invalide.', 502)
+  return user
+}
+
+export const requestRecoveryEmailOtp = async (
+  configuration: SupabaseConfiguration,
+  email: string,
+  redirectTo?: string,
+) => {
+  const normalizedEmail = email.trim().toLowerCase()
+  await reserveEmailAuthAttempt(configuration, normalizedEmail, 'send')
+  await request<unknown>(
+    configuration,
+    pathWithRedirect('/auth/v1/otp', redirectTo),
+    {
+      method: 'POST',
+      body: JSON.stringify({ email: normalizedEmail, create_user: false }),
+    },
+  )
+}
+
+export const verifyRecoveryEmailOtp = async (
+  configuration: SupabaseConfiguration,
+  email: string,
+  token: string,
+) => {
+  const normalizedEmail = email.trim().toLowerCase()
+  await reserveEmailAuthAttempt(configuration, normalizedEmail, 'verify')
+  let response: AuthApiResponse
+  try {
+    response = await request<AuthApiResponse>(configuration, '/auth/v1/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: normalizedEmail,
+        token: token.replace(/[^0-9]/g, ''),
+        type: 'email',
+      }),
+    })
+  } catch (error) {
+    if (error instanceof SupabaseRequestError && [400, 401, 403].includes(error.status)) {
+      throw new SupabaseRequestError(
+        'Ce code est invalide ou expiré. Demande un nouvel email.',
+        400,
+        'invalid_email_otp',
+      )
+    }
+    throw error
+  }
+  const session = sessionFromResponse(response)
+  if (!session) throw new SupabaseRequestError('Supabase n’a pas ouvert la session email.', 502)
+  return session
+}
+
+export const recoverSessionFromUrl = async (
+  configuration: SupabaseConfiguration,
+  url: URL,
+): Promise<AuthSession | null> => {
+  const fragment = new URLSearchParams(url.hash.replace(/^#/, ''))
+  const accessToken = fragment.get('access_token')
+  const refreshToken = fragment.get('refresh_token')
+
+  if (accessToken && refreshToken) {
+    const provisionalSession: AuthSession = {
+      accessToken,
+      refreshToken,
+      expiresAt: fragment.get('expires_at')
+        ? Number(fragment.get('expires_at')) * 1_000
+        : Date.now() + Number(fragment.get('expires_in') ?? 3600) * 1_000,
+      user: { id: '', isAnonymous: false },
+    }
+    const user = await fetchAuthUser(configuration, provisionalSession)
+    return { ...provisionalSession, user }
+  }
+
+  const tokenHash = url.searchParams.get('token_hash')
+  const type = url.searchParams.get('type')
+  if (!tokenHash || !type || !['email', 'magiclink', 'email_change'].includes(type)) return null
+
+  const response = await request<AuthApiResponse>(configuration, '/auth/v1/verify', {
+    method: 'POST',
+    body: JSON.stringify({ token_hash: tokenHash, type }),
+  })
+  const session = sessionFromResponse(response)
+  if (!session) throw new SupabaseRequestError('Supabase n’a pas ouvert la session email.', 502)
+  return session
 }
 
 export const fetchCurrentPrivateServer = async (

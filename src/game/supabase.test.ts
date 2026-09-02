@@ -4,6 +4,7 @@ import {
   SupabaseRequestError,
   createPrivateServer,
   createPlayerIdentity,
+  fetchExistingPlayerIdentity,
   fetchCurrentPrivateServer,
   fetchPrivateServerLeaderboard,
   joinPrivateServer,
@@ -11,8 +12,12 @@ import {
   loadSupabaseConfiguration,
   performRemoteGameAction,
   recoverPlayer,
+  recoverSessionFromUrl,
+  requestRecoveryEmailOtp,
   signInAnonymously,
   storeSession,
+  updateRecoveryEmail,
+  verifyRecoveryEmailOtp,
   type AuthSession,
   type SupabaseConfiguration,
 } from '../backend/supabase'
@@ -78,6 +83,192 @@ describe('adaptateur Supabase', () => {
     })
     assert.equal('email' in requestBody, false)
     assert.equal('password' in requestBody, false)
+  })
+
+  it('lie un email au même utilisateur après réservation du quota', async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown>; authorization?: string }> = []
+    globalThis.fetch = async (input, init) => {
+      const url = String(input)
+      requests.push({
+        url,
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        authorization: new Headers(init?.headers).get('Authorization') ?? undefined,
+      })
+      if (url.includes('/reserve_email_auth_attempt')) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      }
+      return new Response(JSON.stringify({
+        id: session.user.id,
+        new_email: 'lucas@example.com',
+        is_anonymous: true,
+        email_change_sent_at: '2026-09-02T10:00:00Z',
+      }), { status: 200 })
+    }
+
+    const user = await updateRecoveryEmail(
+      configuration,
+      session,
+      ' Lucas@Example.com ',
+      'https://autyco.example/app',
+    )
+
+    assert.deepEqual(requests[0].body, {
+      p_email: 'lucas@example.com',
+      p_action: 'send',
+    })
+    assert.equal(requests[0].authorization, `Bearer ${session.accessToken}`)
+    assert.match(requests[1].url, /\/auth\/v1\/user\?redirect_to=/)
+    assert.deepEqual(requests[1].body, { email: 'lucas@example.com' })
+    assert.equal(user.id, session.user.id)
+    assert.equal(user.pendingEmail, 'lucas@example.com')
+    assert.equal(user.isAnonymous, true)
+  })
+
+  it('demande une connexion email sans autoriser la création d’un compte', async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    globalThis.fetch = async (input, init) => {
+      const url = String(input)
+      requests.push({
+        url,
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      })
+      return new Response(
+        JSON.stringify(url.includes('/reserve_email_auth_attempt') ? { ok: true } : {}),
+        { status: 200 },
+      )
+    }
+
+    await requestRecoveryEmailOtp(
+      configuration,
+      ' Lucas@Example.com ',
+      'https://autyco.example/app',
+    )
+
+    assert.deepEqual(requests[0].body, {
+      p_email: 'lucas@example.com',
+      p_action: 'send',
+    })
+    assert.match(requests[1].url, /\/auth\/v1\/otp\?redirect_to=/)
+    assert.deepEqual(requests[1].body, {
+      email: 'lucas@example.com',
+      create_user: false,
+    })
+  })
+
+  it('n’appelle pas Auth quand le quota applicatif refuse un nouvel envoi', async () => {
+    let requestCount = 0
+    globalThis.fetch = async () => {
+      requestCount += 1
+      return new Response(JSON.stringify({ ok: false, rateLimited: true }), { status: 200 })
+    }
+
+    await assert.rejects(
+      requestRecoveryEmailOtp(configuration, 'lucas@example.com'),
+      (error: unknown) => error instanceof SupabaseRequestError
+        && error.status === 429
+        && error.code === 'email_auth_rate_limited',
+    )
+    assert.equal(requestCount, 1)
+  })
+
+  it('vérifie un OTP email après réservation et conserve le player_id', async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = []
+    globalThis.fetch = async (input, init) => {
+      const url = String(input)
+      requests.push({
+        url,
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      })
+      if (url.includes('/reserve_email_auth_attempt')) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      }
+      return new Response(JSON.stringify({
+        ...authResponse,
+        user: {
+          id: session.user.id,
+          email: 'lucas@example.com',
+          email_confirmed_at: '2026-09-02T10:00:00Z',
+          is_anonymous: false,
+        },
+      }), { status: 200 })
+    }
+
+    const restored = await verifyRecoveryEmailOtp(
+      configuration,
+      'lucas@example.com',
+      '12 34 56',
+    )
+
+    assert.deepEqual(requests[0].body, {
+      p_email: 'lucas@example.com',
+      p_action: 'verify',
+    })
+    assert.deepEqual(requests[1].body, {
+      email: 'lucas@example.com',
+      token: '123456',
+      type: 'email',
+    })
+    assert.equal(restored.user.id, session.user.id)
+    assert.equal(restored.user.isAnonymous, false)
+    assert.equal(restored.user.emailConfirmedAt, '2026-09-02T10:00:00Z')
+  })
+
+  it('ne relaie pas le détail interne d’un OTP refusé', async () => {
+    let requestCount = 0
+    globalThis.fetch = async () => {
+      requestCount += 1
+      if (requestCount === 1) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      }
+      return new Response(JSON.stringify({
+        error_code: 'otp_expired',
+        msg: 'sensitive provider detail',
+      }), { status: 403 })
+    }
+
+    await assert.rejects(
+      verifyRecoveryEmailOtp(configuration, 'lucas@example.com', '123456'),
+      (error: unknown) => error instanceof SupabaseRequestError
+        && error.code === 'invalid_email_otp'
+        && !error.message.includes('provider'),
+    )
+  })
+
+  it('restaure une session depuis le fragment sécurisé d’un lien magique', async () => {
+    globalThis.fetch = async (input, init) => {
+      assert.match(String(input), /\/auth\/v1\/user$/)
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer magic-access')
+      return new Response(JSON.stringify({
+        id: session.user.id,
+        email: 'lucas@example.com',
+        email_confirmed_at: '2026-09-02T10:00:00Z',
+        is_anonymous: false,
+      }), { status: 200 })
+    }
+
+    const restored = await recoverSessionFromUrl(
+      configuration,
+      new URL('https://autyco.example/#access_token=magic-access&refresh_token=magic-refresh&expires_in=3600'),
+    )
+
+    assert.equal(restored?.accessToken, 'magic-access')
+    assert.equal(restored?.refreshToken, 'magic-refresh')
+    assert.equal(restored?.user.id, session.user.id)
+  })
+
+  it('charge l’identité email sans déclencher la création automatique d’un garage', async () => {
+    let requestUrl = ''
+    globalThis.fetch = async (input) => {
+      requestUrl = String(input)
+      return new Response(JSON.stringify({
+        garageName: 'Garage des Docks',
+        playerName: 'Lucas',
+      }), { status: 200 })
+    }
+
+    const identity = await fetchExistingPlayerIdentity(configuration, session)
+    assert.match(requestUrl, /\/rest\/v1\/rpc\/get_existing_player_identity$/)
+    assert.equal(identity.garageName, 'Garage des Docks')
   })
 
   it('crée l’identité via RPC et valide la présence du code', async () => {
