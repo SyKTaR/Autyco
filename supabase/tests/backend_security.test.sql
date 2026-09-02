@@ -1,6 +1,6 @@
 begin;
 
-select plan(21);
+select plan(28);
 
 select has_table('public', 'players', 'players existe');
 select has_table('public', 'market_listings', 'market_listings existe');
@@ -16,6 +16,21 @@ select has_column(
   'severity',
   'la gravité est persistée sur chaque problème diagnostiqué'
 );
+select has_column(
+  'private',
+  'vehicle_templates',
+  'market_tier',
+  'la gamme appartient au modèle source'
+);
+select has_column(
+  'public',
+  'market_listings',
+  'market_tier',
+  'la gamme est figée sur chaque annonce'
+);
+select has_column('public', 'players', 'market_standard_refresh_at', 'la rotation Occasion est persistée');
+select has_column('public', 'players', 'market_premium_refresh_at', 'la rotation Premium est persistée');
+select has_column('public', 'players', 'market_collector_refresh_at', 'la rotation Collection est persistée');
 select has_column(
   'public',
   'vehicle_problems',
@@ -105,6 +120,35 @@ select ok(
     where namespace.nspname = 'private' and routine.proname = 'perform_game_action'
   ),
   'la mutation privilégiée est confinée au schéma private'
+);
+
+select ok(
+  (
+    select routine.prosecdef
+    from pg_catalog.pg_proc as routine
+    join pg_catalog.pg_namespace as namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'private' and routine.proname = 'perform_tiered_market_action'
+  ),
+  'la mutation des marchés par gamme reste confinée au schéma private'
+);
+
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'private.perform_game_action_with_market(text,jsonb,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'private.perform_game_action_with_market(text,jsonb,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'private.with_market_state(uuid,jsonb)',
+    'EXECUTE'
+  ),
+  'seul le point d’entrée marché authentifié expose l’enrichissement de l’état'
 );
 
 select ok(

@@ -1,5 +1,11 @@
-import type { GameState, MarketListing, OwnedVehicle, GameNotification } from '../types/game'
-import { PROBLEM_CATALOG } from './catalog'
+import type {
+  GameNotification,
+  GameState,
+  MarketListing,
+  MarketTier,
+  OwnedVehicle,
+} from '../types/game'
+import { PROBLEM_CATALOG, VEHICLE_CATALOG } from './catalog'
 
 const STORAGE_KEY = 'garage-game:save:v2'
 const LEGACY_STORAGE_KEY = 'garage-game:save:v1'
@@ -9,6 +15,17 @@ const remoteLastActiveKey = (playerId: string) => `garage-game:remote-last-activ
 const severityByProblemId = new Map(
   PROBLEM_CATALOG.map((problem) => [problem.id, problem.severity]),
 )
+const marketByTemplateId = new Map(
+  VEHICLE_CATALOG.map((template) => [template.id, template.market]),
+)
+
+const getListingMarket = (listing: MarketListing): MarketTier => {
+  if (listing.market === 'standard' || listing.market === 'premium' || listing.market === 'collector') {
+    return listing.market
+  }
+  return marketByTemplateId.get(listing.templateId)
+    ?? (listing.segment.toLocaleLowerCase('fr-FR').includes('premium') ? 'premium' : 'standard')
+}
 
 export interface StorageAdapter {
   getItem(key: string): string | null
@@ -62,8 +79,27 @@ const isLegacyGameState = (value: unknown): value is LegacyGameStateV1 => {
   return candidate.version === 1 && typeof candidate.capacity === 'number'
 }
 
-const withCurrentProblemShape = (state: GameState): GameState => ({
+type MigratableGameState = Omit<GameState, 'marketRefreshAt'> & {
+  marketRefreshAt?: Record<MarketTier, number>
+}
+
+const withCurrentProblemShape = (state: MigratableGameState): GameState => ({
   ...state,
+  listings: state.listings.map((listing) => ({
+    ...listing,
+    market: getListingMarket(listing),
+  })),
+  marketRefreshAt: Object.fromEntries(
+    (['standard', 'premium', 'collector'] as const).map((market) => {
+      const persisted = state.marketRefreshAt?.[market]
+      if (typeof persisted === 'number' && Number.isFinite(persisted)) return [market, persisted]
+      const expirations = state.listings
+        .filter((listing) => getListingMarket(listing) === market)
+        .map((listing) => listing.expiresAt)
+        .filter((timestamp) => Number.isFinite(timestamp))
+      return [market, expirations.length > 0 ? Math.max(...expirations) : Date.now()]
+    }),
+  ) as Record<MarketTier, number>,
   vehicles: state.vehicles.map((vehicle) => {
     const hasPersistedSelection = vehicle.problems.some(
       (problem) => typeof problem.selectedForRepair === 'boolean',

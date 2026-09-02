@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   CRITICAL_RESALE_CAP_FACTOR,
+  MARKET_CONFIG,
+  MARKET_TIERS,
   acceptOffer,
   acquireProperty,
   advanceGame,
@@ -12,6 +14,7 @@ import {
   getMaximumAskingPrice,
   getRepairCost,
   getVehicleResaleValue,
+  ignoreListing,
   listVehicle,
   skipRepair,
   startPropertyWorks,
@@ -24,12 +27,50 @@ import { PROPERTY_CHARGE_CYCLE_MS } from './properties'
 const fixedRandom = () => 0.1
 
 describe('boucle de jeu', () => {
-  it('génère un marché de dix véhicules distincts', () => {
+  it('génère trois marchés distincts avec leurs volumes et cadences propres', () => {
     const game = createInitialGame(1_000, fixedRandom)
-    assert.equal(game.listings.length, 10)
-    assert.equal(new Set(game.listings.map((listing) => listing.templateId)).size, 10)
+    assert.equal(game.listings.length, 13)
+    assert.equal(new Set(game.listings.map((listing) => listing.templateId)).size, 13)
+    assert.deepEqual(
+      Object.fromEntries(MARKET_TIERS.map((market) => [
+        market,
+        game.listings.filter((listing) => listing.market === market).length,
+      ])),
+      { standard: 7, premium: 4, collector: 2 },
+    )
+    for (const market of MARKET_TIERS) {
+      const [minimum, maximum] = MARKET_CONFIG[market].refreshSeconds
+      const delay = (game.marketRefreshAt[market] - 1_000) / 1_000
+      assert.ok(delay >= minimum && delay <= maximum)
+      assert.ok(
+        game.listings
+          .filter((listing) => listing.market === market)
+          .every((listing) => listing.expiresAt === game.marketRefreshAt[market]),
+      )
+    }
     assert.equal(getGarageCapacity(game), 3)
     assert.equal(game.cash, 20_000)
+  })
+
+  it('ne remplace pas une annonce achetée ou ignorée avant la rotation de sa gamme', () => {
+    let game = { ...createInitialGame(1_000, fixedRandom), cash: 1_000_000 }
+    const rareListing = game.listings.find((listing) => listing.market === 'collector')!
+    const rareRefreshAt = game.marketRefreshAt.collector
+
+    game = buyListing(game, rareListing.id, 2_000, fixedRandom)
+    assert.equal(game.listings.filter((listing) => listing.market === 'collector').length, 1)
+    assert.match(game.notifications.at(-1)?.message ?? '', /1\/3 places occupées/)
+
+    const remainingRare = game.listings.find((listing) => listing.market === 'collector')!
+    game = ignoreListing(game, remainingRare.id, 3_000, fixedRandom)
+    assert.equal(game.listings.filter((listing) => listing.market === 'collector').length, 0)
+
+    game = advanceGame(game, rareRefreshAt - 1, fixedRandom)
+    assert.equal(game.listings.filter((listing) => listing.market === 'collector').length, 0)
+
+    game = advanceGame(game, rareRefreshAt, fixedRandom)
+    assert.equal(game.listings.filter((listing) => listing.market === 'collector').length, 2)
+    assert.ok(game.marketRefreshAt.collector > rareRefreshAt)
   })
 
   it('classe les organes de sécurité et la distribution comme grosses pannes', () => {

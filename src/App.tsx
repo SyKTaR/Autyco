@@ -51,7 +51,7 @@ function App() {
       {view === 'garage' ? (
         <GarageView onOpenMarket={() => setView('market')} />
       ) : view === 'market' ? (
-        <MarketView onPurchase={() => setView('garage')} />
+        <MarketView />
       ) : view === 'real-estate' ? (
         <RealEstateView />
       ) : view === 'competition' ? (

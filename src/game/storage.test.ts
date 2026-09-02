@@ -31,7 +31,7 @@ describe('sauvegarde locale', () => {
 
     assert.equal(saveGame(game, storage), true)
     assert.equal(loadGame(storage)?.cash, 12_345)
-    assert.equal(loadGame(storage)?.listings.length, 10)
+    assert.equal(loadGame(storage)?.listings.length, 13)
     assert.equal(loadGame(storage)?.version, 2)
   })
 
@@ -124,6 +124,30 @@ describe('sauvegarde locale', () => {
     const migratedProblem = loadGame(storage)?.vehicles[0].problems[0]
     assert.equal(migratedProblem?.severity, 'critical')
     assert.equal(migratedProblem?.selectedForRepair, true)
+  })
+
+  it('classe les anciennes annonces et recrée les échéances de marché absentes', () => {
+    const storage = new MemoryStorage()
+    const current = createInitialGame(1_000, () => 0.2)
+    const listingsWithoutMarket = current.listings.map(({ market: _market, ...listing }) => listing)
+    const { marketRefreshAt: _marketRefreshAt, ...stateWithoutRefreshes } = current
+    storage.setItem(
+      'garage-game:save:v2',
+      JSON.stringify({ ...stateWithoutRefreshes, listings: listingsWithoutMarket }),
+    )
+
+    const migrated = loadGame(storage)
+    assert.deepEqual(
+      [...new Set(migrated?.listings.map((listing) => listing.market))].sort(),
+      ['collector', 'premium', 'standard'],
+    )
+    assert.ok((migrated?.marketRefreshAt.collector ?? 0) > 1_000)
+    assert.equal(
+      migrated?.marketRefreshAt.collector,
+      Math.max(...current.listings
+        .filter((listing) => listing.market === 'collector')
+        .map((listing) => listing.expiresAt)),
+    )
   })
 
   it('isole le cache de chaque compte de la partie locale', () => {

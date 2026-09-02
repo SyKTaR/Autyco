@@ -1,5 +1,6 @@
 export type RiskLevel = 'low' | 'medium' | 'high'
 export type ProblemSeverity = 'critical' | 'minor'
+export type MarketTier = 'standard' | 'premium' | 'collector'
 
 export type VehicleStatus =
   | 'needs-diagnosis'
@@ -14,6 +15,7 @@ export interface VehicleTemplate {
   maker: string
   model: string
   segment: string
+  market: MarketTier
   marketValue: number
   yearMin: number
   yearMax: number
@@ -27,6 +29,7 @@ export interface MarketListing {
   maker: string
   model: string
   segment: string
+  market: MarketTier
   year: number
   mileage: number
   askingPrice: number
@@ -114,6 +117,7 @@ export interface GameState {
   vehicles: OwnedVehicle[]
   properties: OwnedProperty[]
   listings: MarketListing[]
+  marketRefreshAt: Record<MarketTier, number>
   notifications: GameNotification[]
 }
 

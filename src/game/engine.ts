@@ -7,6 +7,7 @@ import {
 import type {
   GameNotification,
   GameState,
+  MarketTier,
   MarketListing,
   OwnedVehicle,
   OwnedProperty,
@@ -16,9 +17,18 @@ import type {
 
 export type RandomSource = () => number
 
-const LISTING_TARGET = 10
 const STARTING_CASH = 20_000
 export const CRITICAL_RESALE_CAP_FACTOR = 0.55
+
+export const MARKET_TIERS: MarketTier[] = ['standard', 'premium', 'collector']
+export const MARKET_CONFIG: Record<
+  MarketTier,
+  { target: number; refreshSeconds: readonly [number, number] }
+> = {
+  standard: { target: 7, refreshSeconds: [120, 180] },
+  premium: { target: 4, refreshSeconds: [720, 1_080] },
+  collector: { target: 2, refreshSeconds: [5_400, 9_000] },
+}
 
 const roundTo = (value: number, step: number) => Math.round(value / step) * step
 const boundedRandom = (random: RandomSource) => Math.max(0, Math.min(0.999_999, random()))
@@ -58,6 +68,7 @@ const createListing = (
   templateIndex: number,
   now: number,
   random: RandomSource,
+  expiresAt: number,
 ): MarketListing => {
   const template = VEHICLE_CATALOG[templateIndex]
   const risk = getRisk(random)
@@ -75,14 +86,24 @@ const createListing = (
     maker: template.maker,
     model: template.model,
     segment: template.segment,
+    market: template.market,
     year,
     mileage: roundTo(randomInteger(template.mileageMin, template.mileageMax, random), 500),
     askingPrice: roundTo(marketValue * randomBetween(minFactor, maxFactor, random), 100),
     marketValue,
     risk,
     conditionHint: riskCondition[risk],
-    expiresAt: now + randomInteger(85, 170, random) * 1_000,
+    expiresAt,
   }
+}
+
+export const getNextMarketRefreshAt = (
+  market: MarketTier,
+  now: number,
+  random: RandomSource = Math.random,
+) => {
+  const [minimum, maximum] = MARKET_CONFIG[market].refreshSeconds
+  return now + randomInteger(minimum, maximum, random) * 1_000
 }
 
 export const generateListings = (
@@ -90,20 +111,48 @@ export const generateListings = (
   now: number,
   random: RandomSource = Math.random,
   excludedTemplateIds: string[] = [],
+  market?: MarketTier,
+  expiresAt?: number,
 ) => {
   const availableIndexes = VEHICLE_CATALOG.map((_, index) => index).filter(
-    (index) => !excludedTemplateIds.includes(VEHICLE_CATALOG[index].id),
+    (index) =>
+      !excludedTemplateIds.includes(VEHICLE_CATALOG[index].id)
+      && (!market || VEHICLE_CATALOG[index].market === market),
   )
   const listings: MarketListing[] = []
 
   while (listings.length < count && availableIndexes.length > 0) {
     const availableIndex = Math.floor(boundedRandom(random) * availableIndexes.length)
     const [templateIndex] = availableIndexes.splice(availableIndex, 1)
-    listings.push(createListing(templateIndex, now + listings.length, random))
+    const templateMarket = VEHICLE_CATALOG[templateIndex].market
+    listings.push(createListing(
+      templateIndex,
+      now + listings.length,
+      random,
+      expiresAt ?? getNextMarketRefreshAt(templateMarket, now, random),
+    ))
   }
 
   return listings
 }
+
+const createMarketRefreshSchedule = (now: number, random: RandomSource) =>
+  Object.fromEntries(
+    MARKET_TIERS.map((market) => [market, getNextMarketRefreshAt(market, now, random)]),
+  ) as Record<MarketTier, number>
+
+const createMarketListings = (
+  now: number,
+  random: RandomSource,
+  refreshAt: Record<MarketTier, number>,
+) => MARKET_TIERS.flatMap((market) => generateListings(
+  MARKET_CONFIG[market].target,
+  now,
+  random,
+  [],
+  market,
+  refreshAt[market],
+))
 
 const withNotification = (
   state: GameState,
@@ -121,16 +170,20 @@ const withNotification = (
 export const createInitialGame = (
   now = Date.now(),
   random: RandomSource = Math.random,
-): GameState => ({
-  version: 2,
-  cash: STARTING_CASH,
-  profitToday: 0,
-  profitDayKey: getDayKey(now),
-  vehicles: [],
-  properties: [],
-  listings: generateListings(LISTING_TARGET, now, random),
-  notifications: [],
-})
+): GameState => {
+  const marketRefreshAt = createMarketRefreshSchedule(now, random)
+  return {
+    version: 2,
+    cash: STARTING_CASH,
+    profitToday: 0,
+    profitDayKey: getDayKey(now),
+    vehicles: [],
+    properties: [],
+    listings: createMarketListings(now, random, marketRefreshAt),
+    marketRefreshAt,
+    notifications: [],
+  }
+}
 
 export const getGarageCapacity = (state: GameState) =>
   BASE_GARAGE_CAPACITY +
@@ -227,15 +280,30 @@ const selectProblems = (risk: RiskLevel, random: RandomSource): VehicleProblem[]
   return selected
 }
 
-const topUpListings = (state: GameState, now: number, random: RandomSource) => {
-  if (state.listings.length >= LISTING_TARGET) return state
-  const additions = generateListings(
-    LISTING_TARGET - state.listings.length,
-    now,
-    random,
-    state.listings.map((listing) => listing.templateId),
-  )
-  return { ...state, listings: [...state.listings, ...additions] }
+const refreshMarkets = (state: GameState, now: number, random: RandomSource) => {
+  let listings = state.listings
+  const marketRefreshAt = { ...state.marketRefreshAt }
+  let changed = false
+
+  for (const market of MARKET_TIERS) {
+    if (now < marketRefreshAt[market]) continue
+    changed = true
+    const nextRefreshAt = getNextMarketRefreshAt(market, now, random)
+    marketRefreshAt[market] = nextRefreshAt
+    listings = [
+      ...listings.filter((listing) => listing.market !== market),
+      ...generateListings(
+        MARKET_CONFIG[market].target,
+        now,
+        random,
+        [],
+        market,
+        nextRefreshAt,
+      ),
+    ]
+  }
+
+  return changed ? { ...state, listings, marketRefreshAt } : state
 }
 
 export const buyListing = (
@@ -281,9 +349,9 @@ export const buyListing = (
   }
 
   return withNotification(
-    topUpListings(nextState, now, random),
-    `${listing.model} achetée. Direction le diagnostic.`,
-    'neutral',
+    nextState,
+    `${listing.model} achetée · ${nextState.vehicles.length}/${getGarageCapacity(nextState)} places occupées.`,
+    'success',
     random,
   )
 }
@@ -291,15 +359,11 @@ export const buyListing = (
 export const ignoreListing = (
   state: GameState,
   listingId: string,
-  now: number,
-  random: RandomSource = Math.random,
+  _now: number,
+  _random: RandomSource = Math.random,
 ) => {
   if (!state.listings.some((listing) => listing.id === listingId)) return state
-  return topUpListings(
-    { ...state, listings: state.listings.filter((listing) => listing.id !== listingId) },
-    now,
-    random,
-  )
+  return { ...state, listings: state.listings.filter((listing) => listing.id !== listingId) }
 }
 
 export const diagnoseVehicle = (
@@ -739,8 +803,5 @@ export const advanceGame = (
       }
     : state
 
-  if (activeListings.length < LISTING_TARGET) {
-    nextState = topUpListings(nextState, now, random)
-  }
-  return nextState
+  return refreshMarkets(nextState, now, random)
 }
