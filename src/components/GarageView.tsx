@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useGame } from '../context/GameContext'
 import {
+  CRITICAL_RESALE_CAP_FACTOR,
+  getMaximumAskingPrice,
+  getProjectedResaleValue,
   getRepairCost,
   getRepairDuration,
   getGarageCapacity,
   getSaleChance,
+  getUnresolvedCriticalProblems,
   getVehicleInvestment,
   getVehicleResaleValue,
 } from '../game/engine'
@@ -87,32 +91,184 @@ const VehicleFacts = ({ vehicle }: { vehicle: OwnedVehicle }) => (
   </dl>
 )
 
-const ProblemList = ({ vehicle }: { vehicle: OwnedVehicle }) => (
-  <div className="divide-y divide-line rounded-2xl bg-paper/55 px-4 shadow-inset">
-    {vehicle.problems.map((problem) => (
-      <div key={problem.id} className="grid grid-cols-[1fr_auto] gap-4 py-3.5">
-        <div>
-          <p className={`text-sm font-semibold ${problem.repaired ? 'text-success' : 'text-ink'}`}>
-            {problem.label}
-            {problem.repaired && <span className="ml-2 font-normal">· traité</span>}
-          </p>
-          <p className="mt-0.5 text-sm leading-5 text-muted">{problem.detail}</p>
-        </div>
-        <div className="text-right">
-          <p className="font-mono text-sm font-semibold">{formatMoney(problem.cost)}</p>
-          <p className="mt-0.5 font-mono text-sm text-muted">{problem.durationSeconds} s</p>
-        </div>
+const RepairDecision = ({ vehicle }: { vehicle: OwnedVehicle }) => {
+  const { state, dispatch } = useGame()
+  const unresolvedProblemIds = vehicle.problems
+    .filter((problem) => !problem.repaired)
+    .map((problem) => problem.id)
+  const unresolvedKey = unresolvedProblemIds.join('|')
+  const [selectedProblemIds, setSelectedProblemIds] = useState(unresolvedProblemIds)
+
+  useEffect(() => {
+    setSelectedProblemIds(unresolvedProblemIds)
+  }, [vehicle.id, unresolvedKey])
+
+  const selectedIds = new Set(selectedProblemIds)
+  const selectedCost = getRepairCost(vehicle, selectedProblemIds)
+  const selectedDuration = selectedProblemIds.length > 0
+    ? getRepairDuration(vehicle, selectedProblemIds)
+    : 0
+  const projectedValue = getProjectedResaleValue(vehicle, selectedProblemIds)
+  const unresolvedAfterDecision = vehicle.problems.filter(
+    (problem) => !problem.repaired && !selectedIds.has(problem.id),
+  )
+  const unresolvedCriticalCount = unresolvedAfterDecision.filter(
+    (problem) => problem.severity === 'critical',
+  ).length
+  const canPay = state.cash >= selectedCost
+  const criticalCap = Math.max(
+    Math.round((vehicle.marketValue * CRITICAL_RESALE_CAP_FACTOR) / 100) * 100,
+    1_000,
+  )
+
+  const toggleProblem = (problemId: string) => {
+    setSelectedProblemIds((current) =>
+      current.includes(problemId)
+        ? current.filter((id) => id !== problemId)
+        : [...current, problemId],
+    )
+  }
+
+  const confirmDecision = () => {
+    if (selectedProblemIds.length === 0) {
+      dispatch({ type: 'SKIP_REPAIR', vehicleId: vehicle.id })
+      return
+    }
+    dispatch({
+      type: 'START_REPAIR',
+      vehicleId: vehicle.id,
+      problemIds: selectedProblemIds,
+      now: Date.now(),
+    })
+  }
+
+  return (
+    <div className="bg-soft/70 p-4 sm:p-6">
+      <div className="mb-4">
+        <p className="text-base font-semibold text-ink">Choisis les interventions</p>
+        <p className="mt-1 max-w-[62ch] text-sm leading-6 text-muted">
+          Coche ce que tu veux traiter maintenant. Le coût, le délai et la valeur estimée se
+          recalculent avant validation.
+        </p>
       </div>
-    ))}
-  </div>
-)
+
+      <div className="grid gap-2" role="group" aria-label="Postes à réparer">
+        {vehicle.problems.filter((problem) => !problem.repaired).map((problem) => {
+          const selected = selectedIds.has(problem.id)
+          const severityLabel = problem.severity === 'critical' ? 'Grosse panne' : 'Détail mineur'
+          return (
+            <label
+              key={problem.id}
+              className={`grid min-h-12 cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-2xl border p-3.5 transition-colors sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center ${
+                selected
+                  ? 'border-signal bg-signal-soft/55'
+                  : 'border-transparent bg-paper/55 hover:border-control'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={() => toggleProblem(problem.id)}
+                className="mt-1 h-5 w-5 shrink-0 accent-[rgb(var(--accent))] sm:mt-0"
+              />
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-ink">{problem.label}</span>
+                  <StatusBadge tone={problem.severity === 'critical' ? 'danger' : 'neutral'}>
+                    {severityLabel}
+                  </StatusBadge>
+                </span>
+                <span className="mt-1 block text-sm leading-5 text-muted">{problem.detail}</span>
+                <span className={`mt-1.5 block text-sm font-medium ${
+                  problem.severity === 'critical' ? 'text-danger' : 'text-muted'
+                }`}>
+                  {problem.severity === 'critical'
+                    ? `Non réparé : vente plafonnée à ${formatMoney(criticalCap)}`
+                    : `Non réparé : −${formatMoney(problem.resaleImpact)} sur l’estimation`}
+                </span>
+              </span>
+              <span className="col-start-2 flex items-center gap-2 font-mono text-sm font-semibold text-ink sm:col-start-3 sm:block sm:text-right">
+                <span>{formatMoney(problem.cost)}</span>
+                <span className="text-muted sm:mt-1 sm:block">{problem.durationSeconds} s</span>
+              </span>
+            </label>
+          )
+        })}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1">
+        <button
+          type="button"
+          className="text-action"
+          onClick={() => setSelectedProblemIds(unresolvedProblemIds)}
+        >
+          Tout sélectionner
+        </button>
+        <button type="button" className="text-action" onClick={() => setSelectedProblemIds([])}>
+          Ne rien réparer
+        </button>
+      </div>
+
+      <div className="mt-3 rounded-2xl bg-paper/65 p-4 shadow-inset" aria-live="polite">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div>
+            <p className="data-label">Sélection</p>
+            <p className="mt-1 font-mono text-base font-semibold">{formatMoney(selectedCost)}</p>
+          </div>
+          <div>
+            <p className="data-label">Atelier</p>
+            <p className="mt-1 font-mono text-base font-semibold">
+              {selectedDuration > 0 ? `≈ ${selectedDuration} s` : 'Aucun délai'}
+            </p>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <p className="data-label">Valeur après travaux</p>
+            <p className="mt-1 font-mono text-base font-semibold">{formatMoney(projectedValue)}</p>
+          </div>
+        </div>
+        <p className={`mt-3 text-sm leading-5 ${
+          unresolvedCriticalCount > 0 ? 'font-semibold text-danger' : 'text-muted'
+        }`}>
+          {unresolvedCriticalCount > 0
+            ? `Après ce choix, ${unresolvedCriticalCount} grosse panne${unresolvedCriticalCount > 1 ? 's restent' : ' reste'} ouverte${unresolvedCriticalCount > 1 ? 's' : ''} : le prix d’annonce sera plafonné.`
+            : unresolvedAfterDecision.length > 0
+              ? `${unresolvedAfterDecision.length} détail${unresolvedAfterDecision.length > 1 ? 's resteront' : ' restera'} visible${unresolvedAfterDecision.length > 1 ? 's' : ''} et déduits de l’estimation.`
+              : 'Tous les défauts seront traités : aucun plafond ni décote ne restera.'}
+        </p>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 sm:items-end">
+        <button
+          type="button"
+          className="button-primary w-full sm:w-auto sm:min-w-[14rem]"
+          disabled={selectedProblemIds.length > 0 && !canPay}
+          title={!canPay && selectedProblemIds.length > 0 ? 'Trésorerie insuffisante' : undefined}
+          onClick={confirmDecision}
+        >
+          {selectedProblemIds.length > 0
+            ? `Réparer ${selectedProblemIds.length} poste${selectedProblemIds.length > 1 ? 's' : ''} · ${formatMoney(selectedCost)}`
+            : 'Valider sans réparation'}
+        </button>
+        {!canPay && selectedProblemIds.length > 0 && (
+          <p className="text-sm font-medium text-danger">Trésorerie insuffisante pour cette sélection.</p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const SaleForm = ({ vehicle }: { vehicle: OwnedVehicle }) => {
   const { dispatch } = useGame()
   const fairValue = getVehicleResaleValue(vehicle)
+  const maximumAskingPrice = getMaximumAskingPrice(vehicle)
+  const unresolvedCriticalProblems = getUnresolvedCriticalProblems(vehicle)
+  const unresolvedProblems = vehicle.problems.filter((problem) => !problem.repaired)
   const [price, setPrice] = useState(String(Math.round(fairValue / 100) * 100))
   const numericPrice = Number(price)
-  const chance = Number.isFinite(numericPrice) ? getSaleChance(vehicle, numericPrice) : 0
+  const exceedsCriticalCap = maximumAskingPrice !== null && numericPrice > maximumAskingPrice
+  const chance = Number.isFinite(numericPrice) && !exceedsCriticalCap
+    ? getSaleChance(vehicle, numericPrice)
+    : 0
   const estimatedMargin = numericPrice - getVehicleInvestment(vehicle)
 
   useEffect(() => {
@@ -128,10 +284,22 @@ const SaleForm = ({ vehicle }: { vehicle: OwnedVehicle }) => {
             Valeur actuelle estimée : {formatMoney(fairValue)}
           </p>
         </div>
-        {vehicle.repairsSkipped && (
+        {unresolvedProblems.length > 0 && (
           <StatusBadge tone="warning">En l’état</StatusBadge>
         )}
       </div>
+      {unresolvedCriticalProblems.length > 0 && maximumAskingPrice !== null && (
+        <div className="mb-4 rounded-2xl bg-danger/10 p-4 text-sm leading-6 text-ink">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="danger">Vente plafonnée</StatusBadge>
+            <span className="font-semibold">{formatMoney(maximumAskingPrice)} maximum</span>
+          </div>
+          <p className="mt-2 text-muted">
+            {unresolvedCriticalProblems.map((problem) => problem.label).join(', ')} : une grosse
+            panne ouverte empêche toute annonce au prix fort.
+          </p>
+        </div>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row">
         <label className="relative flex-1">
           <span className="sr-only">Prix de vente en euros</span>
@@ -139,6 +307,7 @@ const SaleForm = ({ vehicle }: { vehicle: OwnedVehicle }) => {
             type="number"
             inputMode="numeric"
             min="1000"
+            max={maximumAskingPrice ?? undefined}
             step="100"
             value={price}
             onChange={(event) => setPrice(event.target.value)}
@@ -151,7 +320,7 @@ const SaleForm = ({ vehicle }: { vehicle: OwnedVehicle }) => {
         <button
           type="button"
           className="button-primary sm:min-w-[10rem]"
-          disabled={!Number.isFinite(numericPrice) || numericPrice < 1_000}
+          disabled={!Number.isFinite(numericPrice) || numericPrice < 1_000 || exceedsCriticalCap}
           onClick={() =>
             dispatch({
               type: 'LIST_VEHICLE',
@@ -165,7 +334,11 @@ const SaleForm = ({ vehicle }: { vehicle: OwnedVehicle }) => {
         </button>
       </div>
       <div className="mt-3 flex flex-wrap justify-between gap-2 text-sm">
-        <span className="text-muted">Chance d’offre : {Math.round(chance * 100)}%</span>
+        <span className={exceedsCriticalCap ? 'font-semibold text-danger' : 'text-muted'}>
+          {exceedsCriticalCap
+            ? `Prix supérieur au plafond de ${formatMoney(maximumAskingPrice ?? 0)}`
+            : `Chance d’offre : ${Math.round(chance * 100)}%`}
+        </span>
         <span className={estimatedMargin >= 0 ? 'font-semibold text-success' : 'font-semibold text-danger'}>
           Marge visée {estimatedMargin >= 0 ? '+' : '−'}{formatMoney(Math.abs(estimatedMargin))}
         </span>
@@ -175,7 +348,7 @@ const SaleForm = ({ vehicle }: { vehicle: OwnedVehicle }) => {
 }
 
 const ContextualAction = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number }) => {
-  const { state, dispatch } = useGame()
+  const { dispatch } = useGame()
 
   if (vehicle.status === 'needs-diagnosis') {
     return (
@@ -196,47 +369,21 @@ const ContextualAction = ({ vehicle, now }: { vehicle: OwnedVehicle; now: number
   }
 
   if (vehicle.status === 'needs-decision') {
-    const repairCost = getRepairCost(vehicle)
-    const canRepair = state.cash >= repairCost
-    return (
-      <div className="bg-soft/70 p-4 sm:p-6">
-        <ProblemList vehicle={vehicle} />
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            className="button-secondary sm:order-1"
-            onClick={() => dispatch({ type: 'SKIP_REPAIR', vehicleId: vehicle.id })}
-          >
-            Vendre en l’état
-          </button>
-          <button
-            type="button"
-            className="button-primary sm:order-2"
-            disabled={!canRepair}
-            title={!canRepair ? 'Trésorerie insuffisante' : undefined}
-            onClick={() =>
-              dispatch({ type: 'START_REPAIR', vehicleId: vehicle.id, now: Date.now() })
-            }
-          >
-            Tout réparer · {formatMoney(repairCost)}
-          </button>
-        </div>
-        <p className="mt-3 text-right text-sm text-muted">
-          Durée atelier : environ {getRepairDuration(vehicle)} s
-        </p>
-      </div>
-    )
+    return <RepairDecision vehicle={vehicle} />
   }
 
   if (vehicle.status === 'repairing' && vehicle.repairStartedAt && vehicle.repairCompletesAt) {
     const total = vehicle.repairCompletesAt - vehicle.repairStartedAt
     const progress = Math.min(100, Math.max(0, ((now - vehicle.repairStartedAt) / total) * 100))
+    const selectedCount = vehicle.problems.filter((problem) => problem.selectedForRepair).length
     return (
       <div className="bg-signal-soft p-4 text-ink sm:p-6">
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-sm font-semibold">Intervention en cours</p>
-            <p className="mt-1 text-sm text-muted">Toutes les réparations seront traitées.</p>
+            <p className="mt-1 text-sm text-muted">
+              {selectedCount} poste{selectedCount > 1 ? 's sélectionnés' : ' sélectionné'}.
+            </p>
           </div>
           <p className="font-mono text-lg font-semibold">
             {formatRemaining(vehicle.repairCompletesAt, now)}

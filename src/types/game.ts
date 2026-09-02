@@ -1,4 +1,5 @@
 export type RiskLevel = 'low' | 'medium' | 'high'
+export type ProblemSeverity = 'critical' | 'minor'
 
 export type VehicleStatus =
   | 'needs-diagnosis'
@@ -39,10 +40,12 @@ export interface VehicleProblem {
   id: string
   label: string
   detail: string
+  severity: ProblemSeverity
   cost: number
   durationSeconds: number
   resaleImpact: number
   repaired: boolean
+  selectedForRepair: boolean
 }
 
 export interface OwnedVehicle {
@@ -118,7 +121,7 @@ export type GameAction =
   | { type: 'BUY_LISTING'; listingId: string; now: number }
   | { type: 'IGNORE_LISTING'; listingId: string; now: number }
   | { type: 'DIAGNOSE_VEHICLE'; vehicleId: string }
-  | { type: 'START_REPAIR'; vehicleId: string; now: number }
+  | { type: 'START_REPAIR'; vehicleId: string; problemIds: string[]; now: number }
   | { type: 'SKIP_REPAIR'; vehicleId: string }
   | { type: 'LIST_VEHICLE'; vehicleId: string; price: number; now: number }
   | { type: 'ACCEPT_OFFER'; vehicleId: string }

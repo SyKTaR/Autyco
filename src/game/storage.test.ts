@@ -83,6 +83,49 @@ describe('sauvegarde locale', () => {
     assert.equal(loadGame(storage), null)
   })
 
+  it('complète la gravité et la sélection absentes d’une sauvegarde v2 existante', () => {
+    const storage = new MemoryStorage()
+    const current = createInitialGame(1_000, () => 0.2)
+    const listing = current.listings[0]
+    storage.setItem(
+      'garage-game:save:v2',
+      JSON.stringify({
+        ...current,
+        vehicles: [{
+          id: 'vehicle-old-v2',
+          listingId: listing.id,
+          templateId: listing.templateId,
+          maker: listing.maker,
+          model: listing.model,
+          segment: listing.segment,
+          year: listing.year,
+          mileage: listing.mileage,
+          purchasePrice: listing.askingPrice,
+          marketValue: listing.marketValue,
+          risk: listing.risk,
+          status: 'repairing',
+          problems: [{
+            id: 'brakes',
+            label: 'Freinage usé',
+            detail: 'Disques et plaquettes avant',
+            cost: 380,
+            durationSeconds: 5,
+            resaleImpact: 720,
+            repaired: false,
+          }],
+          repairCosts: 0,
+          repairsSkipped: false,
+          kept: false,
+          acquiredAt: 1_100,
+        }],
+      }),
+    )
+
+    const migratedProblem = loadGame(storage)?.vehicles[0].problems[0]
+    assert.equal(migratedProblem?.severity, 'critical')
+    assert.equal(migratedProblem?.selectedForRepair, true)
+  })
+
   it('isole le cache de chaque compte de la partie locale', () => {
     const storage = new MemoryStorage()
     const localGame = createInitialGame(1_000, () => 0.2)

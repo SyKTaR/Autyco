@@ -1,10 +1,14 @@
 import type { GameState, MarketListing, OwnedVehicle, GameNotification } from '../types/game'
+import { PROBLEM_CATALOG } from './catalog'
 
 const STORAGE_KEY = 'garage-game:save:v2'
 const LEGACY_STORAGE_KEY = 'garage-game:save:v1'
 const remoteStorageKey = (playerId: string) => `garage-game:remote-cache:${playerId}:v2`
 const LAST_ACTIVE_KEY = 'garage-game:last-active:v1'
 const remoteLastActiveKey = (playerId: string) => `garage-game:remote-last-active:${playerId}:v1`
+const severityByProblemId = new Map(
+  PROBLEM_CATALOG.map((problem) => [problem.id, problem.severity]),
+)
 
 export interface StorageAdapter {
   getItem(key: string): string | null
@@ -58,10 +62,30 @@ const isLegacyGameState = (value: unknown): value is LegacyGameStateV1 => {
   return candidate.version === 1 && typeof candidate.capacity === 'number'
 }
 
+const withCurrentProblemShape = (state: GameState): GameState => ({
+  ...state,
+  vehicles: state.vehicles.map((vehicle) => {
+    const hasPersistedSelection = vehicle.problems.some(
+      (problem) => typeof problem.selectedForRepair === 'boolean',
+    )
+    return {
+      ...vehicle,
+      problems: vehicle.problems.map((problem) => ({
+        ...problem,
+        severity: problem.severity === 'critical' || problem.severity === 'minor'
+          ? problem.severity
+          : severityByProblemId.get(problem.id) ?? 'minor',
+        selectedForRepair: problem.selectedForRepair === true
+          || (!hasPersistedSelection && vehicle.status === 'repairing' && !problem.repaired),
+      })),
+    }
+  }),
+})
+
 export const migrateGameState = (value: unknown): GameState | null => {
-  if (isGameState(value)) return value
+  if (isGameState(value)) return withCurrentProblemShape(value)
   if (!isLegacyGameState(value)) return null
-  return {
+  return withCurrentProblemShape({
     version: 2,
     cash: value.cash,
     profitToday: value.profitToday,
@@ -70,7 +94,7 @@ export const migrateGameState = (value: unknown): GameState | null => {
     properties: [],
     listings: value.listings,
     notifications: value.notifications,
-  }
+  })
 }
 
 const getBrowserStorage = (): StorageAdapter | null => {

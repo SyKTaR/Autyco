@@ -23,7 +23,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     case 'DIAGNOSE_VEHICLE':
       return diagnoseVehicle(state, action.vehicleId)
     case 'START_REPAIR':
-      return startRepair(state, action.vehicleId, action.now)
+      return startRepair(state, action.vehicleId, action.problemIds, action.now)
     case 'SKIP_REPAIR':
       return skipRepair(state, action.vehicleId)
     case 'LIST_VEHICLE':

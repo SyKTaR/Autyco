@@ -135,11 +135,12 @@ export const VEHICLE_CATALOG: VehicleTemplate[] = [
   },
 ]
 
-export const PROBLEM_CATALOG: Omit<VehicleProblem, 'repaired'>[] = [
+export const PROBLEM_CATALOG: Omit<VehicleProblem, 'repaired' | 'selectedForRepair'>[] = [
   {
     id: 'brakes',
     label: 'Freinage usé',
     detail: 'Disques et plaquettes avant',
+    severity: 'critical',
     cost: 380,
     durationSeconds: 5,
     resaleImpact: 720,
@@ -148,6 +149,7 @@ export const PROBLEM_CATALOG: Omit<VehicleProblem, 'repaired'>[] = [
     id: 'tires',
     label: 'Pneus à remplacer',
     detail: 'Train de pneus en fin de vie',
+    severity: 'critical',
     cost: 460,
     durationSeconds: 6,
     resaleImpact: 780,
@@ -156,6 +158,7 @@ export const PROBLEM_CATALOG: Omit<VehicleProblem, 'repaired'>[] = [
     id: 'timing',
     label: 'Distribution à prévoir',
     detail: 'Échéance constructeur dépassée',
+    severity: 'critical',
     cost: 920,
     durationSeconds: 10,
     resaleImpact: 1_450,
@@ -164,6 +167,7 @@ export const PROBLEM_CATALOG: Omit<VehicleProblem, 'repaired'>[] = [
     id: 'battery',
     label: 'Batterie faible',
     detail: 'Démarrage irrégulier à froid',
+    severity: 'minor',
     cost: 190,
     durationSeconds: 3,
     resaleImpact: 390,
@@ -172,6 +176,7 @@ export const PROBLEM_CATALOG: Omit<VehicleProblem, 'repaired'>[] = [
     id: 'bodywork',
     label: 'Carrosserie marquée',
     detail: 'Deux éléments à reprendre',
+    severity: 'minor',
     cost: 680,
     durationSeconds: 8,
     resaleImpact: 1_080,
@@ -180,6 +185,7 @@ export const PROBLEM_CATALOG: Omit<VehicleProblem, 'repaired'>[] = [
     id: 'service',
     label: 'Entretien en retard',
     detail: 'Vidange, filtres et contrôles',
+    severity: 'minor',
     cost: 240,
     durationSeconds: 4,
     resaleImpact: 510,

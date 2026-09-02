@@ -579,6 +579,7 @@ const actionPayload = (action: GameAction): Record<string, unknown> => {
     case 'TOGGLE_VEHICLE_KEPT':
       return { vehicleId: action.vehicleId }
     case 'START_REPAIR':
+      return { vehicleId: action.vehicleId, problemIds: action.problemIds }
     case 'REJECT_OFFER':
       return { vehicleId: action.vehicleId }
     case 'LIST_VEHICLE':

@@ -7,6 +7,7 @@ import {
   createInitialGame,
   diagnoseVehicle,
   getPropertyCycleCost,
+  getVehicleResaleValue,
   listVehicle,
   skipRepair,
   startPropertyWorks,
@@ -27,7 +28,13 @@ describe('résumé de retour', () => {
     previous = { ...previous, cash: 100_000 }
     previous = buyListing(previous, previous.listings[0].id, startedAt + 100, fixedRandom)
     previous = diagnoseVehicle(previous, previous.vehicles[0].id, fixedRandom)
-    previous = startRepair(previous, previous.vehicles[0].id, startedAt + 200, fixedRandom)
+    previous = startRepair(
+      previous,
+      previous.vehicles[0].id,
+      previous.vehicles[0].problems.map((problem) => problem.id),
+      startedAt + 200,
+      fixedRandom,
+    )
     previous = acquireProperty(previous, 'atelier-cour', startedAt + 300, fixedRandom)
     previous = startPropertyWorks(previous, previous.properties[0].instanceId, startedAt + 400, fixedRandom)
 
@@ -56,7 +63,13 @@ describe('résumé de retour', () => {
     previous = buyListing(previous, previous.listings[0].id, startedAt + 100, fixedRandom)
     previous = diagnoseVehicle(previous, previous.vehicles[0].id, fixedRandom)
     previous = skipRepair(previous, previous.vehicles[0].id, fixedRandom)
-    previous = listVehicle(previous, previous.vehicles[0].id, 10_000, startedAt + 200, fixedRandom)
+    previous = listVehicle(
+      previous,
+      previous.vehicles[0].id,
+      getVehicleResaleValue(previous.vehicles[0]),
+      startedAt + 200,
+      fixedRandom,
+    )
     previous = acquireProperty(previous, 'box-quartier', startedAt + 300, fixedRandom)
     previous = {
       ...previous,

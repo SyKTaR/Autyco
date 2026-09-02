@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  CRITICAL_RESALE_CAP_FACTOR,
   acceptOffer,
   acquireProperty,
   advanceGame,
@@ -8,6 +9,7 @@ import {
   createInitialGame,
   diagnoseVehicle,
   getGarageCapacity,
+  getMaximumAskingPrice,
   getRepairCost,
   getVehicleResaleValue,
   listVehicle,
@@ -16,6 +18,7 @@ import {
   startRepair,
   toggleVehicleKept,
 } from './engine'
+import { PROBLEM_CATALOG } from './catalog'
 import { PROPERTY_CHARGE_CYCLE_MS } from './properties'
 
 const fixedRandom = () => 0.1
@@ -27,6 +30,19 @@ describe('boucle de jeu', () => {
     assert.equal(new Set(game.listings.map((listing) => listing.templateId)).size, 10)
     assert.equal(getGarageCapacity(game), 3)
     assert.equal(game.cash, 20_000)
+  })
+
+  it('classe les organes de sécurité et la distribution comme grosses pannes', () => {
+    assert.deepEqual(
+      PROBLEM_CATALOG.filter((problem) => problem.severity === 'critical')
+        .map((problem) => problem.id),
+      ['brakes', 'tires', 'timing'],
+    )
+    assert.deepEqual(
+      PROBLEM_CATALOG.filter((problem) => problem.severity === 'minor')
+        .map((problem) => problem.id),
+      ['battery', 'bodywork', 'service'],
+    )
   })
 
   it('partage la capacité entre stock et collection et interdit la vente d’un véhicule gardé', () => {
@@ -53,7 +69,13 @@ describe('boucle de jeu', () => {
     assert.equal(game.vehicles[0].status, 'ready')
 
     game = toggleVehicleKept(game, keptVehicleId, fixedRandom)
-    game = listVehicle(game, keptVehicleId, 15_000, 4_100, fixedRandom)
+    game = listVehicle(
+      game,
+      keptVehicleId,
+      getVehicleResaleValue(game.vehicles[0]),
+      4_100,
+      fixedRandom,
+    )
     assert.equal(game.vehicles[0].status, 'listed')
   })
 
@@ -110,7 +132,13 @@ describe('boucle de jeu', () => {
     assert.ok(game.vehicles[0].problems.length > 0)
 
     const repairCost = getRepairCost(game.vehicles[0])
-    game = startRepair(game, game.vehicles[0].id, startedAt + 200, fixedRandom)
+    game = startRepair(
+      game,
+      game.vehicles[0].id,
+      game.vehicles[0].problems.map((problem) => problem.id),
+      startedAt + 200,
+      fixedRandom,
+    )
     assert.equal(game.vehicles[0].status, 'repairing')
     assert.equal(game.cash, 20_000 - listing.askingPrice - repairCost)
 
@@ -132,5 +160,97 @@ describe('boucle de jeu', () => {
     assert.equal(game.vehicles.length, 0)
     assert.equal(game.cash, cashBeforeSale + offer)
     assert.notEqual(game.profitToday, 0)
+  })
+
+  it('ne facture et ne répare que les postes sélectionnés', () => {
+    let game = createInitialGame(1_000, fixedRandom)
+    const brakes = PROBLEM_CATALOG.find((problem) => problem.id === 'brakes')!
+    const bodywork = PROBLEM_CATALOG.find((problem) => problem.id === 'bodywork')!
+    const vehicle = {
+      ...game.vehicles[0],
+      id: 'vehicle-selective',
+      listingId: 'listing-selective',
+      templateId: 'clio-v',
+      maker: 'Renault',
+      model: 'Clio V',
+      segment: 'Citadine',
+      year: 2021,
+      mileage: 50_000,
+      purchasePrice: 10_000,
+      marketValue: 20_000,
+      risk: 'high' as const,
+      status: 'needs-decision' as const,
+      problems: [brakes, bodywork].map((problem) => ({
+        ...problem,
+        repaired: false,
+        selectedForRepair: false,
+      })),
+      repairCosts: 0,
+      repairsSkipped: false,
+      kept: false,
+      acquiredAt: 1_000,
+    }
+    game = { ...game, cash: 5_000, vehicles: [vehicle] }
+
+    assert.equal(getRepairCost(vehicle, ['brakes']), brakes.cost)
+    game = startRepair(game, vehicle.id, ['brakes'], 2_000, fixedRandom)
+
+    assert.equal(game.cash, 5_000 - brakes.cost)
+    assert.equal(game.vehicles[0].repairCosts, brakes.cost)
+    assert.equal(game.vehicles[0].repairsSkipped, true)
+    assert.equal(game.vehicles[0].problems[0].selectedForRepair, true)
+    assert.equal(game.vehicles[0].problems[1].selectedForRepair, false)
+
+    game = advanceGame(game, 30_000, fixedRandom)
+    assert.equal(game.vehicles[0].status, 'ready')
+    assert.equal(game.vehicles[0].problems[0].repaired, true)
+    assert.equal(game.vehicles[0].problems[1].repaired, false)
+    assert.ok(game.vehicles[0].problems.every((problem) => !problem.selectedForRepair))
+    assert.equal(getVehicleResaleValue(game.vehicles[0]), 18_900)
+  })
+
+  it('plafonne une vente avec grosse panne et conserve la décote proportionnelle des détails', () => {
+    const brakes = PROBLEM_CATALOG.find((problem) => problem.id === 'brakes')!
+    const bodywork = PROBLEM_CATALOG.find((problem) => problem.id === 'bodywork')!
+    const baseProblem = { repaired: false, selectedForRepair: false }
+    const game = createInitialGame(1_000, fixedRandom)
+    const vehicle = {
+      id: 'vehicle-cap',
+      listingId: 'listing-cap',
+      templateId: 'clio-v',
+      maker: 'Renault',
+      model: 'Clio V',
+      segment: 'Citadine',
+      year: 2021,
+      mileage: 50_000,
+      purchasePrice: 10_000,
+      marketValue: 20_000,
+      risk: 'high' as const,
+      status: 'ready' as const,
+      problems: [{ ...brakes, ...baseProblem }, { ...bodywork, ...baseProblem }],
+      repairCosts: 0,
+      repairsSkipped: true,
+      kept: false,
+      acquiredAt: 1_000,
+    }
+    const criticalState = { ...game, vehicles: [vehicle] }
+    const criticalCap = 20_000 * CRITICAL_RESALE_CAP_FACTOR
+
+    assert.equal(getVehicleResaleValue(vehicle), criticalCap)
+    assert.equal(getMaximumAskingPrice(vehicle), criticalCap)
+
+    const rejected = listVehicle(criticalState, vehicle.id, 20_000, 2_000, fixedRandom)
+    assert.equal(rejected.vehicles[0].status, 'ready')
+    assert.match(rejected.notifications.at(-1)?.message ?? '', /Prix plafonné/)
+
+    const accepted = listVehicle(criticalState, vehicle.id, criticalCap, 2_000, fixedRandom)
+    assert.equal(accepted.vehicles[0].status, 'listed')
+
+    const minorOnly = {
+      ...vehicle,
+      problems: [{ ...bodywork, ...baseProblem }],
+    }
+    assert.equal(getVehicleResaleValue(minorOnly), 18_900)
+    assert.equal(getMaximumAskingPrice(minorOnly), null)
   })
 })

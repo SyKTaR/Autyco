@@ -179,6 +179,28 @@ describe('adaptateur Supabase', () => {
     assert.equal(result.cash, remoteState.cash)
   })
 
+  it('transmet au serveur uniquement les postes de réparation sélectionnés', async () => {
+    const remoteState = createInitialGame(1_000, () => 0.2)
+    let requestBody: Record<string, unknown> = {}
+    globalThis.fetch = async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(JSON.stringify(remoteState), { status: 200 })
+    }
+
+    await performRemoteGameAction(configuration, session, {
+      type: 'START_REPAIR',
+      vehicleId: '5c967aca-4545-4d28-9bda-544f8622150f',
+      problemIds: ['brakes', 'service'],
+      now: 999_999_999,
+    })
+
+    assert.equal(requestBody.p_action, 'START_REPAIR')
+    assert.deepEqual(requestBody.p_payload, {
+      vehicleId: '5c967aca-4545-4d28-9bda-544f8622150f',
+      problemIds: ['brakes', 'service'],
+    })
+  })
+
   it('crée un serveur privé via la RPC et valide son code éphémère', async () => {
     let requestUrl = ''
     let requestBody: Record<string, unknown> = {}

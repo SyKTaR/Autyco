@@ -18,6 +18,7 @@ export type RandomSource = () => number
 
 const LISTING_TARGET = 10
 const STARTING_CASH = 20_000
+export const CRITICAL_RESALE_CAP_FACTOR = 0.55
 
 const roundTo = (value: number, step: number) => Math.round(value / step) * step
 const boundedRandom = (random: RandomSource) => Math.max(0, Math.min(0.999_999, random()))
@@ -143,22 +144,55 @@ export const getPropertyCycleCost = (property: OwnedProperty) =>
 export const getRecurringPropertyCosts = (state: GameState) =>
   state.properties.reduce((total, property) => total + getPropertyCycleCost(property), 0)
 
-export const getRepairCost = (vehicle: OwnedVehicle) =>
-  vehicle.problems.filter((problem) => !problem.repaired).reduce((sum, problem) => sum + problem.cost, 0)
+const getSelectedUnrepairedProblems = (
+  vehicle: OwnedVehicle,
+  problemIds?: readonly string[],
+) => {
+  const selectedIds = problemIds ? new Set(problemIds) : null
+  return vehicle.problems.filter(
+    (problem) => !problem.repaired && (!selectedIds || selectedIds.has(problem.id)),
+  )
+}
 
-export const getRepairDuration = (vehicle: OwnedVehicle) => {
-  const seconds = vehicle.problems
-    .filter((problem) => !problem.repaired)
+export const getRepairCost = (vehicle: OwnedVehicle, problemIds?: readonly string[]) =>
+  getSelectedUnrepairedProblems(vehicle, problemIds)
+    .reduce((sum, problem) => sum + problem.cost, 0)
+
+export const getRepairDuration = (vehicle: OwnedVehicle, problemIds?: readonly string[]) => {
+  const seconds = getSelectedUnrepairedProblems(vehicle, problemIds)
     .reduce((sum, problem) => sum + problem.durationSeconds, 0)
   return Math.min(18, Math.max(6, Math.round(seconds * 0.72)))
 }
+
+export const getUnresolvedCriticalProblems = (vehicle: OwnedVehicle) =>
+  vehicle.problems.filter((problem) => !problem.repaired && problem.severity === 'critical')
 
 export const getVehicleResaleValue = (vehicle: OwnedVehicle) => {
   const unresolvedImpact = vehicle.problems
     .filter((problem) => !problem.repaired)
     .reduce((sum, problem) => sum + problem.resaleImpact, 0)
-  return Math.max(roundTo(vehicle.marketValue - unresolvedImpact, 100), 1_000)
+  const proportionalValue = roundTo(vehicle.marketValue - unresolvedImpact, 100)
+  const criticalCap = getUnresolvedCriticalProblems(vehicle).length > 0
+    ? roundTo(vehicle.marketValue * CRITICAL_RESALE_CAP_FACTOR, 100)
+    : Number.POSITIVE_INFINITY
+  return Math.max(Math.min(proportionalValue, criticalCap), 1_000)
 }
+
+export const getProjectedResaleValue = (
+  vehicle: OwnedVehicle,
+  repairedProblemIds: readonly string[],
+) => {
+  const selectedIds = new Set(repairedProblemIds)
+  return getVehicleResaleValue({
+    ...vehicle,
+    problems: vehicle.problems.map((problem) =>
+      selectedIds.has(problem.id) ? { ...problem, repaired: true } : problem,
+    ),
+  })
+}
+
+export const getMaximumAskingPrice = (vehicle: OwnedVehicle) =>
+  getUnresolvedCriticalProblems(vehicle).length > 0 ? getVehicleResaleValue(vehicle) : null
 
 export const getVehicleInvestment = (vehicle: OwnedVehicle) =>
   vehicle.purchasePrice + vehicle.repairCosts
@@ -187,7 +221,7 @@ const selectProblems = (risk: RiskLevel, random: RandomSource): VehicleProblem[]
   while (selected.length < count) {
     const index = Math.floor(boundedRandom(random) * available.length)
     const [problem] = available.splice(index, 1)
-    selected.push({ ...problem, repaired: false })
+    selected.push({ ...problem, repaired: false, selectedForRepair: false })
   }
 
   return selected
@@ -294,16 +328,26 @@ export const diagnoseVehicle = (
 export const startRepair = (
   state: GameState,
   vehicleId: string,
+  problemIds: readonly string[],
   now: number,
   random: RandomSource = Math.random,
 ) => {
   const vehicle = state.vehicles.find((item) => item.id === vehicleId)
   if (!vehicle || vehicle.status !== 'needs-decision') return state
-  const cost = getRepairCost(vehicle)
+  const selectedProblems = getSelectedUnrepairedProblems(vehicle, problemIds)
+  const requestedIds = new Set(problemIds)
+  if (selectedProblems.length === 0 || selectedProblems.length !== requestedIds.size) {
+    return withNotification(state, 'Sélection de réparations invalide.', 'warning', random)
+  }
+  const selectedIds = new Set(selectedProblems.map((problem) => problem.id))
+  const cost = getRepairCost(vehicle, [...selectedIds])
   if (state.cash < cost) {
     return withNotification(state, 'Trésorerie insuffisante pour lancer les réparations.', 'warning', random)
   }
-  const repairCompletesAt = now + getRepairDuration(vehicle) * 1_000
+  const repairCompletesAt = now + getRepairDuration(vehicle, [...selectedIds]) * 1_000
+  const unresolvedAfterRepair = vehicle.problems.filter(
+    (problem) => !problem.repaired && !selectedIds.has(problem.id),
+  ).length
   return withNotification(
     {
       ...state,
@@ -312,7 +356,12 @@ export const startRepair = (
         item.id === vehicleId
           ? {
               ...item,
+              problems: item.problems.map((problem) => ({
+                ...problem,
+                selectedForRepair: !problem.repaired && selectedIds.has(problem.id),
+              })),
               repairCosts: item.repairCosts + cost,
+              repairsSkipped: unresolvedAfterRepair > 0,
               repairStartedAt: now,
               repairCompletesAt,
               status: 'repairing' as const,
@@ -320,7 +369,7 @@ export const startRepair = (
           : item,
       ),
     },
-    `Réparations lancées sur la ${vehicle.model}.`,
+    `${selectedProblems.length} intervention${selectedProblems.length > 1 ? 's' : ''} lancée${selectedProblems.length > 1 ? 's' : ''} sur la ${vehicle.model}.`,
     'neutral',
     random,
   )
@@ -338,7 +387,15 @@ export const skipRepair = (
       ...state,
       vehicles: state.vehicles.map((item) =>
         item.id === vehicleId
-          ? { ...item, repairsSkipped: true, status: 'ready' as const }
+          ? {
+              ...item,
+              problems: item.problems.map((problem) => ({
+                ...problem,
+                selectedForRepair: false,
+              })),
+              repairsSkipped: true,
+              status: 'ready' as const,
+            }
           : item,
       ),
     },
@@ -364,6 +421,15 @@ export const listVehicle = (
     price < 1_000
   ) return state
   const normalizedPrice = roundTo(price, 100)
+  const maximumAskingPrice = getMaximumAskingPrice(vehicle)
+  if (maximumAskingPrice !== null && normalizedPrice > maximumAskingPrice) {
+    return withNotification(
+      state,
+      `Prix plafonné à ${maximumAskingPrice.toLocaleString('fr-FR')} € tant qu’une grosse panne reste ouverte.`,
+      'warning',
+      random,
+    )
+  }
   const chance = getSaleChance(vehicle, normalizedPrice)
   return withNotification(
     {
@@ -569,10 +635,24 @@ export const advanceGame = (
   const vehicles = state.vehicles.map((vehicle) => {
     if (vehicle.status === 'repairing' && vehicle.repairCompletesAt && vehicle.repairCompletesAt <= now) {
       changed = true
-      addNotification(`${vehicle.model} réparée. Elle peut maintenant être mise en vente.`, 'success')
+      const completedCount = vehicle.problems.filter((problem) => problem.selectedForRepair).length
+      const remainingCount = vehicle.problems.filter(
+        (problem) => !problem.repaired && !problem.selectedForRepair,
+      ).length
+      addNotification(
+        remainingCount > 0
+          ? `${completedCount} intervention${completedCount > 1 ? 's' : ''} terminée${completedCount > 1 ? 's' : ''} sur la ${vehicle.model} · ${remainingCount} défaut${remainingCount > 1 ? 's' : ''} restant${remainingCount > 1 ? 's' : ''}.`
+          : `${vehicle.model} réparée. Elle peut maintenant être mise en vente.`,
+        remainingCount > 0 ? 'neutral' : 'success',
+      )
       return {
         ...vehicle,
-        problems: vehicle.problems.map((problem) => ({ ...problem, repaired: true })),
+        problems: vehicle.problems.map((problem) => ({
+          ...problem,
+          repaired: problem.repaired || problem.selectedForRepair,
+          selectedForRepair: false,
+        })),
+        repairStartedAt: undefined,
         repairCompletesAt: undefined,
         status: 'ready' as const,
       }

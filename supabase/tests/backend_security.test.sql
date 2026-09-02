@@ -1,6 +1,6 @@
 begin;
 
-select plan(17);
+select plan(21);
 
 select has_table('public', 'players', 'players existe');
 select has_table('public', 'market_listings', 'market_listings existe');
@@ -10,6 +10,18 @@ select has_table('public', 'owned_properties', 'owned_properties existe');
 select has_table('public', 'transactions', 'transactions existe');
 select has_table('public', 'game_events', 'game_events existe');
 select has_table('public', 'notifications', 'notifications existe');
+select has_column(
+  'public',
+  'vehicle_problems',
+  'severity',
+  'la gravité est persistée sur chaque problème diagnostiqué'
+);
+select has_column(
+  'public',
+  'vehicle_problems',
+  'selected_for_repair',
+  'la sélection atelier est persistée pendant les travaux'
+);
 
 select is(
   (
@@ -93,6 +105,30 @@ select ok(
     where namespace.nspname = 'private' and routine.proname = 'perform_game_action'
   ),
   'la mutation privilégiée est confinée au schéma private'
+);
+
+select ok(
+  (
+    select routine.prosecdef
+    from pg_catalog.pg_proc as routine
+    join pg_catalog.pg_namespace as namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'private' and routine.proname = 'perform_selected_repair'
+  ),
+  'la réparation sélective privilégiée est confinée au schéma private'
+);
+
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'private.perform_selected_repair(jsonb,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'private.perform_selected_repair(jsonb,uuid)',
+    'EXECUTE'
+  ),
+  'seul authenticated peut appeler le moteur privé de réparation sélective'
 );
 
 select ok(
